@@ -1055,6 +1055,8 @@ public class FunUtil extends Util {
             return Syntax.Postfix;
         case 'I':
             return Syntax.Internal;
+        case 'r':
+            return Syntax.Parentheses;
         default:
             throw newInternal(
                 "unknown syntax code '" + c + "' in string '" + flags + "'");

@@ -849,6 +849,7 @@ public class BuiltinFunTable extends FunTableImpl {
         builder.define(CrossJoinFunDef.Resolver);
         builder.define(NonEmptyCrossJoinFunDef.Resolver);
         builder.define(CrossJoinFunDef.StarResolver);
+        builder.define(CrossJoinFunDef.ParanthesisResolver);
         builder.define(DescendantsFunDef.Resolver);
         builder.define(DescendantsFunDef.Resolver2);
         builder.define(DistinctFunDef.instance);
@@ -916,9 +917,8 @@ public class BuiltinFunTable extends FunTableImpl {
         });
 
         builder.define(ExceptFunDef.Resolver);
-		builder.define(ExceptFunDef.MinusResolver);
+        builder.define(ExceptFunDef.MinusResolver);
         builder.define(ExceptFunDef.MinusResolver2);
-
         builder.define(ExistsFunDef.resolver);
         builder.define(ExtractFunDef.Resolver);
         builder.define(FilterFunDef.instance);
