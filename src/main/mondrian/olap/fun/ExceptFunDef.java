@@ -12,6 +12,7 @@ package mondrian.olap.fun;
 import mondrian.calc.*;
 import mondrian.calc.impl.AbstractListCalc;
 import mondrian.calc.impl.ArrayTupleList;
+import mondrian.calc.impl.ListTupleList;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
 
@@ -32,22 +33,35 @@ class ExceptFunDef extends FunDefBase {
             new String[]{"fxxx", "fxxxy"},
             ExceptFunDef.class);
 
+    static final MinusExceptResolver MinusResolver =
+            new MinusExceptResolver();
+    static final MinusExceptResolver2 MinusResolver2 =
+            new MinusExceptResolver2();
+    
     public ExceptFunDef(FunDef dummyFunDef) {
         super(dummyFunDef);
     }
 
     public Calc compileCall(ResolvedFunCall call, ExpCompiler compiler) {
         // todo: implement ALL
-        final ListCalc listCalc0 = compiler.compileList(call.getArg(0));
-        final ListCalc listCalc1 = compiler.compileList(call.getArg(1));
+        final ListCalc listCalc0 = call.getArgCount()>1?compiler.compileList(call.getArg(0)):null;
+        final ListCalc listCalc1 = call.getArgCount()>1?compiler.compileList(call.getArg(1)):compiler.compileList(call.getArg(0));
         return new AbstractListCalc(call, new Calc[] {listCalc0, listCalc1})
         {
             public TupleList evaluateList(Evaluator evaluator) {
-                TupleList list0 = listCalc0.evaluateList(evaluator);
-                if (list0.isEmpty()) {
-                    return list0;
-                }
                 TupleList list1 = listCalc1.evaluateList(evaluator);
+                TupleList list0;
+            	if (listCalc0!=null) {
+	            	list0 = listCalc0.evaluateList(evaluator);
+	                if (list0.isEmpty()) {
+	                    return list0;
+	                }
+            	} else {
+            		Level level=list1.get(0).get(0).getLevel();
+            		List<Member> allmembers=evaluator.getSchemaReader().getLevelMembers(level, null);
+            		list0=new ListTupleList(1,allmembers);
+            	}
+
                 if (list1.isEmpty()) {
                     return list0;
                 }
@@ -63,6 +77,59 @@ class ExceptFunDef extends FunDefBase {
             }
         };
     }
+    
+    private static class MinusExceptResolver extends MultiResolver {
+        public MinusExceptResolver() {
+            super(
+                "-",
+                "All members - <Set1>",
+                "Complementer of Set1.",
+                new String[]{"Pxx"});
+        }
+
+        public FunDef resolve(
+            Exp[] args,
+            Validator validator,
+            List<Conversion> conversions)
+        {
+            // This function only applies in contexts which require a set.
+            if (validator.requiresExpression()) {
+                return null;
+            }
+            return super.resolve(args, validator, conversions);
+        }
+
+        protected FunDef createFunDef(Exp[] args, FunDef dummyFunDef) {
+            return new ExceptFunDef(dummyFunDef);
+        }
+    }
+    
+    private static class MinusExceptResolver2 extends MultiResolver {
+        public MinusExceptResolver2() {
+            super(
+                "-",
+                "<Set1> - <Set2>",
+                "Set1 minus set2.",
+                new String[]{"ixxx"});
+        }
+
+        public FunDef resolve(
+            Exp[] args,
+            Validator validator,
+            List<Conversion> conversions)
+        {
+            // This function only applies in contexts which require a set.
+            if (validator.requiresExpression()) {
+                return null;
+            }
+            return super.resolve(args, validator, conversions);
+        }
+
+        protected FunDef createFunDef(Exp[] args, FunDef dummyFunDef) {
+            return new ExceptFunDef(dummyFunDef);
+        }
+    }
+
 }
 
 // End ExceptFunDef.java
