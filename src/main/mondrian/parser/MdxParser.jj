@@ -1022,8 +1022,10 @@ Query selectStatement() :
      Exp w = null;
      QueryAxis i;
      List<QueryAxis> a = new ArrayList<QueryAxis>();
-     Id c, p;
+     Id p;
+     Id c = null;
      List<QueryPart> cellPropList = new ArrayList<QueryPart>();
+     Query subQuery = null;
 }
 {
     (
@@ -1050,7 +1052,16 @@ Query selectStatement() :
             }
         )*
     )?
-    <FROM> c = compoundId()
+    <FROM>
+    (
+        <LPAREN>
+        (
+            subQuery=selectStatement()
+        )
+        <RPAREN>
+    |
+        c = compoundId()
+    )
     (
         <WHERE> w = expression()
     )?
@@ -1070,7 +1081,8 @@ Query selectStatement() :
     {
         // We want 'Sales', not '[Sales]', and can't handle 'Schema.Sales'
         // yet.
-        String cubeName = ((Id.NameSegment) c.getElement(0)).name;
+        
+        String cubeName = subQuery!=null?subQuery.getCube().getName():((Id.NameSegment) c.getElement(0)).name;
         return factory.makeQuery(
             statement,
             toFormulaArray(f),
@@ -1078,7 +1090,8 @@ Query selectStatement() :
             cubeName,
             w,
             toQueryPartArray(cellPropList),
-            strictValidation);
+            strictValidation,
+            subQuery);
     }
 }
 
