@@ -178,6 +178,8 @@ public abstract class FunTableImpl implements FunTable {
             final Comparator<Resolver> comparator =
                 new Comparator<Resolver>() {
                     public int compare(Resolver o1, Resolver o2) {
+                        if (o1.getSignature()==null) return -1;
+                        if (o2.getSignature()==null) return 1;
                         return o1.getSignature().compareTo(o2.getSignature());
                     }
                 };

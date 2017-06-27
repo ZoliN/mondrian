@@ -37,6 +37,9 @@ public class CrossJoinFunDef extends FunDefBase {
 
     static final StarCrossJoinResolver StarResolver =
         new StarCrossJoinResolver();
+    
+    static final ParanthesisResolver ParanthesisResolver =
+        new ParanthesisResolver();
 
     private static int counterTag = 0;
 
@@ -101,9 +104,11 @@ public class CrossJoinFunDef extends FunDefBase {
                     return compileCallIterable(call, compiler);
             case LIST:
                 // Consumer wants (immutable) LIST
+                if (call.getArgCount()>2) throw Util.newInternal("Unimplemented cross join feature: list style result with more than 2 arguments.");
                 return compileCallImmutableList(call, compiler);
             case MUTABLE_LIST:
                 // Consumer MUTABLE_LIST
+                if (call.getArgCount()>2) throw Util.newInternal("Unimplemented cross join feature: list style result with more than 2 arguments.");
                 return compileCallMutableList(call, compiler);
             }
         }
@@ -122,17 +127,16 @@ public class CrossJoinFunDef extends FunDefBase {
         final ResolvedFunCall call,
         ExpCompiler compiler)
     {
-        final Calc calc1 = toIter(compiler, call.getArg(0));
-        final Calc calc2 = toIter(compiler, call.getArg(1));
-        Calc[] calcs = new Calc[] {calc1, calc2};
+        Calc[] calcs = new Calc[call.getArgCount()];
+        for (int i = 0; i < calcs.length; i++) {
+            calcs[i]=toIter(compiler, call.getArg(i));
+            // Check returned calc ResultStyles
+            checkIterListResultStyles(calcs[i]);
+        }
         // The Calcs, 1 and 2, can be of type: Member or Member[] and
         // of ResultStyle: ITERABLE, LIST or MUTABLE_LIST, but
         // LIST and MUTABLE_LIST are treated the same; so
         // there are 16 possible combinations - sweet.
-
-        // Check returned calc ResultStyles
-        checkIterListResultStyles(calc1);
-        checkIterListResultStyles(calc2);
 
         return new CrossJoinIterCalc(call, calcs);
     }
@@ -178,30 +182,22 @@ public class CrossJoinFunDef extends FunDefBase {
             }
 
             Calc[] calcs = getCalcs();
-            IterCalc calc1 = (IterCalc) calcs[0];
-            IterCalc calc2 = (IterCalc) calcs[1];
-
-            TupleIterable o1 = calc1.evaluateIterable(evaluator);
-            if (o1 instanceof TupleList) {
-                TupleList l1 = (TupleList) o1;
-                l1 = nonEmptyOptimizeList(evaluator, l1, call);
-                if (l1.isEmpty()) {
-                    return TupleCollections.emptyList(getType().getArity());
+            TupleIterable[] o= new TupleIterable[calcs.length];
+            TupleList[] l= new TupleList[calcs.length];
+            
+            for (int i = 0; i < calcs.length; i++) {
+                o[i] = ((IterCalc)calcs[i]).evaluateIterable(evaluator);
+                if (o[i] instanceof TupleList) {
+                    l[i] = (TupleList) o[i];
+                    l[i] = nonEmptyOptimizeList(evaluator, l[i], call);
+                    if (l[i].isEmpty()) {
+                        return TupleCollections.emptyList(getType().getArity());
+                    }
+                    o[i] = l[i];
                 }
-                o1 = l1;
             }
 
-            TupleIterable o2 = calc2.evaluateIterable(evaluator);
-            if (o2 instanceof TupleList) {
-                TupleList l2 = (TupleList) o2;
-                l2 = nonEmptyOptimizeList(evaluator, l2, call);
-                if (l2.isEmpty()) {
-                    return TupleCollections.emptyList(getType().getArity());
-                }
-                o2 = l2;
-            }
-
-            return makeIterable(o1, o2);
+            return calcs.length==2?makeIterable(o[0],o[1]):makeIterable(o);
         }
 
         protected TupleIterable makeIterable(
@@ -268,8 +264,93 @@ public class CrossJoinFunDef extends FunDefBase {
                 }
             };
         }
+    
+
+        protected TupleIterable makeIterable(
+            final TupleIterable[] it)
+        {
+            // There is no knowledge about how large either it1 ore it2
+            // are or how many null members they might have, so all
+            // one can do is iterate across them:
+            // iterate across it1 and for each member iterate across it2
+            int totalArity=0;
+            for (int j = 0; j < it.length; j++) {
+                totalArity += it[j].getArity();
+            }
+
+            return new AbstractTupleIterable(totalArity) {
+                private TupleCursor[] tcs;
+                public TupleCursor tupleCursor() {
+                    tcs = new TupleCursor[it.length];
+                    for (int i = 0; i < it.length-1; i++) {
+                        tcs[i] = it[i].tupleCursor();
+                        tcs[i].forward();
+                    }
+                    tcs[it.length-1] = it[it.length-1].tupleCursor();
+                    return new AbstractTupleCursor(getArity()) {
+                        final Member[] members = new Member[arity];
+                        final int lasttc = tcs.length-1;
+                        
+                        public boolean forward() {
+                            int c=lasttc;
+                            while(true) {
+                                if (tcs[c].forward())
+                                    return true;
+                                if (c==0) 
+                                    return false;
+                                tcs[c]=it[c].tupleCursor();
+                                tcs[c].forward();
+                                c--;
+                            }
+                        }
+
+                        public List<Member> current() {
+                            int cumulArity=0;
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].currentToArray(members,cumulArity);
+                                cumulArity += it[i].getArity();
+                            }
+                            return Util.flatList(members);
+                        }
+
+                        @Override
+                        public Member member(int column) {
+                            int cumulArity=0;
+                            int i = 0;
+                            while ((cumulArity + it[i].getArity())<=column)  {
+                                cumulArity += it[i].getArity();
+                                i++;
+                            }
+                            return tcs[i].member(column-cumulArity);
+
+                        }
+
+                        @Override
+                        public void setContext(Evaluator evaluator) {
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].setContext(evaluator);
+                            }
+
+                        }
+
+                        @Override
+                        public void currentToArray(
+                            Member[] members,
+                            int offset)
+                        {
+                            int cumulArity=0;
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].currentToArray(members, offset + cumulArity);
+                                cumulArity += it[i].getArity();
+                            }
+                        }
+                    };
+                }
+            };
+        }
     }
 
+    
     ///////////////////////////////////////////////////////////////////////////
     // Immutable List
     ///////////////////////////////////////////////////////////////////////////
@@ -1013,6 +1094,35 @@ public class CrossJoinFunDef extends FunDefBase {
                 "<Set1> * <Set2>",
                 "Returns the cross product of two sets.",
                 new String[]{"ixxx", "ixmx", "ixxm", "ixmm"});
+        }
+
+        public FunDef resolve(
+            Exp[] args,
+            Validator validator,
+            List<Conversion> conversions)
+        {
+            // This function only applies in contexts which require a set.
+            // Elsewhere, "*" is the multiplication operator.
+            // This means that [Measures].[Unit Sales] * [Gender].[M] is
+            // well-defined.
+            if (validator.requiresExpression()) {
+                return null;
+            }
+            return super.resolve(args, validator, conversions);
+        }
+
+        protected FunDef createFunDef(Exp[] args, FunDef dummyFunDef) {
+            return new CrossJoinFunDef(dummyFunDef);
+        }
+    }
+    
+    private static class ParanthesisResolver extends MultiResolver {
+        public ParanthesisResolver() {
+            super(
+                "()",
+                "(<Set1> , <Set2> , ...)",
+                "Returns the cross product of two or more sets.",
+                new String[]{"rxxx","rxxxx","rxxxxx","rxxxxxx","rxxxxxxx","rxxxxxxxx","rxxxxxxxxx","rxxxxxxxxxx","rxxxxxxxxxxx"});
         }
 
         public FunDef resolve(
