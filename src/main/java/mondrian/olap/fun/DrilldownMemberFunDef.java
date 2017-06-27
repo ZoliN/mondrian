@@ -8,12 +8,14 @@
 // Copyright (C) 2005-2011 Pentaho
 // All Rights Reserved.
 */
+
 package mondrian.olap.fun;
 
 import mondrian.calc.*;
 import mondrian.calc.impl.AbstractListCalc;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
+import mondrian.olap.type.Type;
 
 import java.util.*;
 
@@ -28,9 +30,9 @@ class DrilldownMemberFunDef extends FunDefBase {
     static final ReflectiveMultiResolver Resolver =
         new ReflectiveMultiResolver(
             "DrilldownMember",
-            "DrilldownMember(<Set1>, <Set2>[, RECURSIVE])",
+            "DrilldownMember(<Set1>, <Set2> [,[<Target_Hierarchy>]] [,[RECURSIVE]])",
             "Drills down the members in a set that are present in a second specified set.",
-            new String[]{"fxxx", "fxxxy"},
+            new String[]{"fxxx", "fxxxy", "fxxxh", "fxxxhy", "fxxxey"},
             DrilldownMemberFunDef.class,
             reservedWords);
 
@@ -41,17 +43,38 @@ class DrilldownMemberFunDef extends FunDefBase {
     public Calc compileCall(ResolvedFunCall call, ExpCompiler compiler) {
         final ListCalc listCalc1 = compiler.compileList(call.getArg(0));
         final ListCalc listCalc2 = compiler.compileList(call.getArg(1));
-        final String literalArg = getLiteralArg(call, 2, "", reservedWords);
-        final boolean recursive = literalArg.equals("RECURSIVE");
+        HierarchyCalc hierCalcTmp=null;
+        boolean recursiveTmp=false;
+        if (call.getArgCount() > 2) {
+        	Type type=call.getArg(2).getType();
+        	if (!(type instanceof mondrian.olap.type.EmptyType)) {
+	        	if (!(type instanceof mondrian.olap.type.SymbolType)) {
+	        		hierCalcTmp=compiler.compileHierarchy(call.getArg(2));
+	        	} else {
+	        		final String literalArg = getLiteralArg(call, 2, "", reservedWords);
+	                recursiveTmp = literalArg.equals("RECURSIVE");
+	        	}
+        	}
+        	if (call.getArgCount() > 3) {
+                final String literalArg = getLiteralArg(call, 3, "", reservedWords);
+                recursiveTmp = literalArg.equals("RECURSIVE");
+        	}
+
+        	
+        }
+    	final boolean recursive=recursiveTmp;
+    	final HierarchyCalc hierCalc=hierCalcTmp;
+                
 
         return new AbstractListCalc(
             call,
-            new Calc[] {listCalc1, listCalc2})
+            new Calc[] {listCalc1, listCalc2, hierCalc})
         {
             public TupleList evaluateList(Evaluator evaluator) {
                 final TupleList list1 = listCalc1.evaluateList(evaluator);
                 final TupleList list2 = listCalc2.evaluateList(evaluator);
-                return drilldownMember(list1, list2, evaluator);
+                final Hierarchy hier = hierCalc==null?null:hierCalc.evaluateHierarchy(evaluator);
+                return drilldownMember(list1, list2, hier, evaluator);
             }
 
             /**
@@ -70,21 +93,37 @@ class DrilldownMemberFunDef extends FunDefBase {
                 Evaluator evaluator,
                 Member[] tuple,
                 Set<Member> memberSet,
-                TupleList resultList)
+                TupleList resultList,
+                Hierarchy hier)
             {
                 for (int k = 0; k < tuple.length; k++) {
                     Member member = tuple[k];
                     if (memberSet.contains(member)) {
-                        List<Member> children =
-                            evaluator.getSchemaReader().getMemberChildren(
-                                member);
+                    	List<Member> children=null;
+                    	int idrilled;
+                        if (hier==null) {
+                    		children =
+                            	evaluator.getSchemaReader().getMemberChildren(
+                            			member);
+                    		idrilled=k;
+                        }
+                        else {
+                        	int j=0;
+                        	while (tuple[j].getHierarchy()!=hier) j++;
+                        	if (j<tuple.length) 
+                        		children =
+                            	evaluator.getSchemaReader().getMemberChildren(
+                            			tuple[j]);
+                        	idrilled=j;
+                        }
+                        if (children==null) break;
                         final Member[] tuple2 = tuple.clone();
                         for (Member childMember : children) {
-                            tuple2[k] = childMember;
+                            tuple2[idrilled] = childMember;
                             resultList.addTuple(tuple2);
                             if (recursive) {
                                 drillDownObj(
-                                    evaluator, tuple2, memberSet, resultList);
+                                    evaluator, tuple2, memberSet, resultList, hier);
                             }
                         }
                         break;
@@ -95,6 +134,7 @@ class DrilldownMemberFunDef extends FunDefBase {
             private TupleList drilldownMember(
                 TupleList v0,
                 TupleList v1,
+                Hierarchy hier,
                 Evaluator evaluator)
             {
                 assert v1.getArity() == 1;
@@ -111,7 +151,7 @@ class DrilldownMemberFunDef extends FunDefBase {
                     List<Member> o = v0.get(i++);
                     o.toArray(members);
                     result.add(o);
-                    drillDownObj(evaluator, members, set1, result);
+                    drillDownObj(evaluator, members, set1, result, hier);
                 }
                 return result;
             }
