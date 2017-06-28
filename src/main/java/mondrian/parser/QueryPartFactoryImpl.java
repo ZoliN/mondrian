@@ -21,13 +21,26 @@ class QueryPartFactoryImpl
     implements MdxParserValidator.QueryPartFactory
 {
     public Query makeQuery(
+            Statement statement,
+            Formula[] formulae,
+            QueryAxis[] axes,
+            String cube,
+            Exp slicer,
+            QueryPart[] cellProps,
+            boolean strictValidation)
+    {
+        return makeQuery(statement,formulae,axes,cube,slicer,cellProps,strictValidation,null);
+    }
+    
+    public Query makeQuery(
         Statement statement,
         Formula[] formulae,
         QueryAxis[] axes,
         String cube,
         Exp slicer,
         QueryPart[] cellProps,
-        boolean strictValidation)
+        boolean strictValidation,
+        Query subQuery)
     {
         final QueryAxis slicerAxis =
             slicer == null
@@ -37,7 +50,7 @@ class QueryPartFactoryImpl
                     QueryAxis.SubtotalVisibility.Undefined, new Id[0]);
         return new Query(
             statement, formulae, axes, cube, slicerAxis, cellProps,
-            strictValidation);
+            strictValidation,subQuery);
     }
 
     public DrillThrough makeDrillThrough(

@@ -55,6 +55,20 @@ public interface MdxParserValidator {
             Exp slicer,
             QueryPart[] cellProps,
             boolean strictValidation);
+        
+        /**
+         * Creates a {@link mondrian.olap.Query} object.
+         * Override this function to make your kind of query.
+         */
+        Query makeQuery(
+            Statement statement,
+            Formula[] formulae,
+            QueryAxis[] axes,
+            String cube,
+            Exp slicer,
+            QueryPart[] cellProps,
+            boolean strictValidation,
+            Query subQuery);
 
         /**
          * Creates a {@link mondrian.olap.DrillThrough} object.

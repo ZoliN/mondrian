@@ -144,6 +144,8 @@ public class Query extends QueryPart {
     private final List<ScopedNamedSet> scopedNamedSets =
         new ArrayList<ScopedNamedSet>();
     private boolean ownStatement;
+    
+    private Query subQuery;
 
     /**
      * Creates a Query.
@@ -155,7 +157,8 @@ public class Query extends QueryPart {
         String cube,
         QueryAxis slicerAxis,
         QueryPart[] cellProps,
-        boolean strictValidation)
+        boolean strictValidation,
+        Query subQuery)
     {
         this(
             statement,
@@ -165,7 +168,8 @@ public class Query extends QueryPart {
             slicerAxis,
             cellProps,
             new Parameter[0],
-            strictValidation);
+            strictValidation,
+            subQuery);
     }
 
     /**
@@ -181,6 +185,23 @@ public class Query extends QueryPart {
         Parameter[] parameters,
         boolean strictValidation)
     {
+        this(statement,mdxCube,formulas,axes,slicerAxis,cellProps,parameters,strictValidation,null);
+    }
+    
+    /**
+     * Creates a Query.
+     */
+    public Query(
+        Statement statement,
+        Cube mdxCube,
+        Formula[] formulas,
+        QueryAxis[] axes,
+        QueryAxis slicerAxis,
+        QueryPart[] cellProps,
+        Parameter[] parameters,
+        boolean strictValidation,
+        Query subQuery)
+    {
         this.statement = statement;
         this.cube = mdxCube;
         this.formulas = formulas;
@@ -195,6 +216,7 @@ public class Query extends QueryPart {
         this.nativeCrossJoinVirtualCube = true;
         this.strictValidation = strictValidation;
         this.alertedNonNativeFunDefs = new HashSet<FunDef>();
+        this.subQuery = subQuery;
         statement.setQuery(this);
         resolve();
 
@@ -1052,6 +1074,13 @@ public class Query extends QueryPart {
         return axes;
     }
 
+    /**
+     * Returns this query's subquery.
+     */
+    public Query getSubQuery() {
+        return subQuery;
+    }
+    
     /**
      * Remove a formula from the query. If <code>failIfUsedInQuery</code> is
      * true, checks and throws an error if formula is used somewhere in the
