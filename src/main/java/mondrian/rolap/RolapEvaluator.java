@@ -14,11 +14,13 @@ package mondrian.rolap;
 
 import mondrian.calc.Calc;
 import mondrian.calc.ParameterSlot;
+import mondrian.calc.TupleList;
+import mondrian.calc.impl.DelegatingTupleList;
 import mondrian.olap.*;
-import mondrian.olap.fun.FunUtil;
+import mondrian.olap.fun.*;
 import mondrian.server.Statement;
 import mondrian.spi.Dialect;
-import mondrian.util.Format;
+import mondrian.util.*;
 
 import org.apache.log4j.Logger;
 
@@ -91,8 +93,14 @@ public class RolapEvaluator implements Evaluator {
      * evaluated.
      */
     protected final List<List<List<Member>>> aggregationLists;
+    
+    protected CompoundPredicateInfo slicerPredicateInfo;
+    protected CompoundPredicateInfo subQueryPredicateInfo;
 
     private final List<RolapMember> slicerMembers;
+    
+    private TupleList slicerTuples;
+
     private boolean nativeEnabled;
     private RolapMember[] nonAllMembers;
     private int commandCount;
@@ -107,6 +115,15 @@ public class RolapEvaluator implements Evaluator {
     public Set<Exp> getActiveNativeExpansions() {
         return root.activeNativeExpansions;
     }
+
+    public CompoundPredicateInfo getSlicerPredicateInfo() {
+        return slicerPredicateInfo;
+    }
+    
+    public CompoundPredicateInfo getSubQueryPredicateInfo() {
+        return subQueryPredicateInfo;
+    }
+
 
     /**
      * States of the finite state machine for determining the max solve order
@@ -148,6 +165,10 @@ public class RolapEvaluator implements Evaluator {
         calculations = parent.calculations.clone();
         calculationCount = parent.calculationCount;
         slicerMembers = new ArrayList<RolapMember>(parent.slicerMembers);
+        slicerTuples = parent.slicerTuples;
+        slicerPredicateInfo = parent.slicerPredicateInfo;
+        subQueryPredicateInfo = parent.subQueryPredicateInfo;
+        expandingMember = parent.expandingMember;
 
         commands = new Object[10];
         commands[0] = Command.SAVEPOINT; // sentinel
@@ -160,6 +181,9 @@ public class RolapEvaluator implements Evaluator {
             aggregationLists =
                 new ArrayList<List<List<Member>>>(parent.aggregationLists);
         }
+        if (parent.slicerPredicateInfo != null) {
+            this.slicerPredicateInfo = parent.slicerPredicateInfo;
+        }
         if (aggregationList != null) {
             if (aggregationLists == null) {
                 aggregationLists = new ArrayList<List<List<Member>>>();
@@ -170,9 +194,9 @@ public class RolapEvaluator implements Evaluator {
                 setContext(member.getHierarchy().getAllMember());
             }
         }
-        this.aggregationLists = aggregationLists;
-
-        expandingMember = parent.expandingMember;
+        this.aggregationLists = aggregationLists == null
+                ? Collections.<List<List<Member>>>emptyList()
+                : Collections.unmodifiableList(aggregationLists);
     }
 
     /**
@@ -494,6 +518,36 @@ public class RolapEvaluator implements Evaluator {
         return slicerMembers;
     }
 
+    /**
+     * Sets the slicer tuple object, used later by native evaluation and
+     * non-empty crossjoins.
+     *
+     * @param tuples slicer
+     */
+    public final void setSlicerTuples(TupleList tuples) {
+        slicerTuples = tuples;
+        if (tuples != null) {
+            slicerPredicateInfo = new CompoundPredicateInfo(
+                tuples, (RolapMeasure)currentMembers[0], this);
+        }
+    }
+
+    /**
+     * Return the list of compound slicer tuples
+     */
+    public final TupleList getSlicerTuples() {
+        return slicerTuples;
+    }
+
+
+
+    public final void setSubQueryPredicate(TupleList tuples) {
+        subQueryPredicateInfo = new CompoundPredicateInfo(
+             tuples, (RolapMeasure)currentMembers[0], this);
+
+     }
+
+    
     public final Member setContext(Member member) {
         // Note: the body of this function is identical to calling
         // 'setContext(member, true)'. We inline the logic for performance.

@@ -16,7 +16,9 @@ import mondrian.mdx.*;
 import mondrian.olap.*;
 import mondrian.olap.fun.*;
 import mondrian.olap.fun.VisualTotalsFunDef.VisualTotalMember;
+import mondrian.olap.type.MemberType;
 import mondrian.olap.type.ScalarType;
+import mondrian.olap.type.SetType;
 import mondrian.resource.MondrianResource;
 import mondrian.rolap.agg.AggregationManager;
 import mondrian.rolap.agg.CellRequestQuantumExceededException;
@@ -225,6 +227,18 @@ public class RolapResult extends ResultBase {
 
             final List<List<Member>> emptyNonAllMembers =
                 Collections.emptyList();
+            
+            TupleList subqueryResults = null;
+            if (query.getSubQuery()!=null) subqueryResults = executeSubQuery(query.getSubQuery(), evaluator.push());
+            if (subqueryResults!=null) {
+                subqueryResults =
+                    AggregateFunDef.AggregateCalc.optimizeTupleList(
+                        evaluator,
+                        subqueryResults,
+                        false);
+                evaluator.setSubQueryPredicate(subqueryResults);
+            }
+
 
             // Initial evaluator, to execute slicer.
             slicerEvaluator = evaluator.push();
@@ -353,6 +367,7 @@ public class RolapResult extends ResultBase {
                             slicerEvaluator,
                             tupleList,
                             false);
+                    evaluator.setSlicerTuples(tupleList);
 
                     final Calc valueCalc =
                         new ValueCalc(
@@ -504,6 +519,251 @@ public class RolapResult extends ResultBase {
             }
         }
     }
+
+    
+    
+    
+    
+    static class SubQCrossJoinIterCalc extends AbstractIterCalc
+    {
+        TupleIterable subqSet;
+        
+        SubQCrossJoinIterCalc( Calc[] calcs , TupleIterable subqSet) {
+            //mondrian.olap.type.TupleType tt = new mondrian.olap.type.TupleType(new MemberType[6]);
+            super(new DummyExp(new SetType(new mondrian.olap.type.TupleType(new MemberType[calcArity(calcs ,subqSet)]))), calcs);
+            this.subqSet = subqSet;
+        }
+        
+        private static int calcArity(Calc[] calcs , TupleIterable subqSet) {
+            int totalArity=0;
+            for (int j = 0; j < calcs.length; j++) {
+                totalArity += calcs[j].getType().getArity();
+            }   
+            totalArity += subqSet.getArity();
+            return totalArity;
+        }
+
+        public TupleIterable evaluateIterable(Evaluator evaluator) {
+
+            Calc[] calcs = getCalcs();
+            TupleIterable[] o= new TupleIterable[calcs.length+1];
+            
+            for (int i = 0; i < calcs.length; i++) {
+                o[i] = ((IterCalc)calcs[i]).evaluateIterable(evaluator);
+            }
+
+            o[calcs.length] = subqSet;
+
+            return makeIterable(o);
+        }
+
+        public static TupleIterable makeIterable(
+            final TupleIterable[] it)
+        {
+            // There is no knowledge about how large either it1 ore it2
+            // are or how many null members they might have, so all
+            // one can do is iterate across them:
+            // iterate across it1 and for each member iterate across it2
+            int totalArity=0;
+            for (int j = 0; j < it.length; j++) {
+                totalArity += it[j].getArity();
+            }
+
+            return new AbstractTupleIterable(totalArity) {
+                private TupleCursor[] tcs;
+                public TupleCursor tupleCursor() {
+                    tcs = new TupleCursor[it.length];
+                    for (int i = 0; i < it.length-1; i++) {
+                        tcs[i] = it[i].tupleCursor();
+                        tcs[i].forward();
+                    }
+                    tcs[it.length-1] = it[it.length-1].tupleCursor();
+                    return new AbstractTupleCursor(getArity()) {
+                        final Member[] members = new Member[arity];
+                        final int lasttc = tcs.length-1;
+                        
+                        public boolean forward() {
+                            int c=lasttc;
+                            while(true) {
+                                if (tcs[c].forward())
+                                    return true;
+                                if (c==0) 
+                                    return false;
+                                tcs[c]=it[c].tupleCursor();
+                                tcs[c].forward();
+                                c--;
+                            }
+                        }
+
+                        public List<Member> current() {
+                            int cumulArity=0;
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].currentToArray(members,cumulArity);
+                                cumulArity += it[i].getArity();
+                            }
+                            return Util.flatList(members);
+                        }
+
+                        @Override
+                        public Member member(int column) {
+                            int cumulArity=0;
+                            int i = 0;
+                            while ((cumulArity + it[i].getArity())<=column)  {
+                                cumulArity += it[i].getArity();
+                                i++;
+                            }
+                            return tcs[i].member(column-cumulArity);
+
+                        }
+
+                        @Override
+                        public void setContext(Evaluator evaluator) {
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].setContext(evaluator);
+                            }
+
+                        }
+
+                        @Override
+                        public void currentToArray(
+                            Member[] members,
+                            int offset)
+                        {
+                            int cumulArity=0;
+                            for (int i = 0; i < tcs.length; i++) {
+                                tcs[i].currentToArray(members, offset + cumulArity);
+                                cumulArity += it[i].getArity();
+                            }
+                        }
+                    };
+                }
+            };
+        }
+    }
+    
+    
+    
+   
+    
+    TupleList executeSubQuery(Query query,RolapEvaluator evaluator) {
+        
+        TupleIterable subQueryTuples = null;
+        if (query.getSubQuery()!=null) subQueryTuples = executeSubQuery(query.getSubQuery(), evaluator.push());
+        
+        /*Axis[] axes;
+        axes = new Axis[query.getAxes().length];
+        */
+        // The AxisMember object is used to hold Members that are found
+        // during Step 1 when the Axes are determined.
+        final AxisMemberList axisMembers = new AxisMemberList();
+
+
+        // list of ALL Members that are not default Members
+        final List<Member> nonDefaultAllMembers = new ArrayList<Member>();
+
+        // List of Members of Hierarchies that do not have an ALL Member
+        List<List<Member>> nonAllMembers = new ArrayList<List<Member>>();
+
+        // List of Measures
+        final List<Member> measureMembers = new ArrayList<Member>();
+
+        // load all root Members for Hierarchies that have no ALL
+        // Member and load ALL Members that are not the default Member.
+        // Also, all Measures are are gathered.
+        loadSpecialMembers(
+            nonDefaultAllMembers, nonAllMembers, measureMembers);
+        
+        // clear evaluation cache
+        query.clearEvalCache();
+
+        // Save, may be needed by some Expression Calc's
+        query.putEvalCache("ALL_MEMBER_LIST", nonDefaultAllMembers);
+
+
+        final List<List<Member>> emptyNonAllMembers =
+            Collections.emptyList();
+        
+        /////////////////////////////////////////////////////////////////
+        // Determine Axes
+        //
+        //boolean changed = false;
+
+
+
+        for (int i = 0; i < query.axes.length; i++) {
+            final QueryAxis axis = query.axes[i];
+            final Calc calc = query.axisCalcs[i];
+            loadMembers(emptyNonAllMembers, evaluator, axis, calc, axisMembers);
+        }
+
+        if (!axisMembers.isEmpty()) {
+            for (Member m : axisMembers) {
+                if (m.isMeasure()) {
+                    // A Measure was explicitly declared on an
+                    // axis, don't need to worry about Measures
+                    // for this query.
+                    measureMembers.clear();
+                }
+            }
+            //changed = replaceNonAllMembers(nonAllMembers, axisMembers);
+            axisMembers.clearMembers();
+        }
+
+
+        /////////////////////////////////////////////////////////////////
+        // Execute Axes
+        //
+        
+        TupleIterable tupleIterable[] = new TupleIterable[query.axes.length];
+        final int savepoint = evaluator.savepoint();
+        do {
+            try {
+                boolean redo;
+                do {
+                    evaluator.restore(savepoint);
+                    redo = false;
+                    for (int i = 0; i < query.axes.length; i++) {
+                        QueryAxis axis = query.axes[i];
+                        final Calc calc = query.axisCalcs[i];
+                        tupleIterable[i] = evalExecute(nonAllMembers, nonAllMembers.size() - 1, evaluator,
+                                axis, calc);
+
+                        if (!nonAllMembers.isEmpty()) {
+                            final TupleIterator tupleIterator = tupleIterable[i].tupleIterator();
+                            if (tupleIterator.hasNext()) {
+                                List<Member> tuple0 = tupleIterator.next();
+                                // Only need to process the first tuple on
+                                // the axis.
+                                for (Member m : tuple0) {
+                                    if (m.isCalculated()) {
+                                        CalculatedMeasureVisitor visitor = new CalculatedMeasureVisitor();
+                                        m.getExpression().accept(visitor);
+                                        Dimension dimension = visitor.dimension;
+                                        if (removeDimension(dimension, nonAllMembers)) {
+                                            redo = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                    }
+                } while (redo);
+            } catch (CellRequestQuantumExceededException e) {
+                // Safe to ignore. Need to call 'phase' and loop again.
+            }
+        } while (phase());
+
+        evaluator.restore(savepoint);
+        
+        for (int i = 0; i < query.axes.length; i++) {
+            subQueryTuples = subQueryTuples!=null?SubQCrossJoinIterCalc.makeIterable(new TupleIterable[]{subQueryTuples,tupleIterable[i]}):tupleIterable[i];
+        }
+        
+        return TupleCollections.materialize(subQueryTuples, false); 
+        
+    }
+    
 
     /**
      * Sets slicerAxis to a dummy placeholder RolapAxis containing
@@ -1984,7 +2244,7 @@ public class RolapResult extends ResultBase {
      * the context of the slicer members.
      * See MONDRIAN-1226.
      */
-    private class CompoundSlicerRolapMember extends DelegatingRolapMember
+    class CompoundSlicerRolapMember extends DelegatingRolapMember
     implements RolapMeasure
     {
         private final Calc calc;

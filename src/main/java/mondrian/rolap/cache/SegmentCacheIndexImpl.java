@@ -94,9 +94,8 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             request.getMeasure().getCubeName(),
             request.getMeasure().getStar().getFactTable().getAlias(),
             request.getMeasure().getName(),
-            AggregationKey.getCompoundPredicateStringList(
-                key.getStar(),
-                key.getCompoundPredicateList()));
+            request.getCompoundPredicateStrings());
+
     }
 
     public List<SegmentHeader> locate(

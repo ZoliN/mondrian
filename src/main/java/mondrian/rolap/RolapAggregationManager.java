@@ -20,6 +20,8 @@ import mondrian.util.Pair;
 
 import java.util.*;
 
+import org.apache.commons.collections.CollectionUtils;
+
 /**
  * <code>RolapAggregationManager</code> manages all
  * {@link mondrian.rolap.agg.Segment}s in the system.
@@ -97,78 +99,124 @@ public abstract class RolapAggregationManager {
     public static CellRequest makeRequest(
         RolapEvaluator evaluator)
     {
-        final RolapMember[] currentMembers = evaluator.getNonAllMembers();
-        final List<List<List<Member>>> aggregationLists =
-            evaluator.getAggregationLists();
 
-        final RolapStoredMeasure measure =
-            (RolapStoredMeasure) currentMembers[0];
-        final RolapStar.Measure starMeasure = measure.getStarMeasure();
-        assert starMeasure != null;
-        final RolapStar star = starMeasure.getStar();
-        int starColumnCount = star.getColumnCount();
 
         CellRequest request =
             makeCellRequest(
-                currentMembers,
+                evaluator.getNonAllMembers(),
                 false,
                 false,
                 null,
                 null,
                 evaluator);
 
-        // Now setting the compound keys.
-        // First find out the columns referenced in the aggregateMemberList.
-        // Each list defines a compound member.
-        if (aggregationLists == null) {
-            return request;
+        if (request == null) {
+            // Current request cannot be processed. Per API, return null.
+            return null;
         }
+        
+        if (evaluator.getSubQueryPredicateInfo() != null) {
+            if (!applySubQueryPredicates(evaluator, request)) {
 
-        // For each aggregationList, generate the optimal form of
-        // compoundPredicate. These compoundPredicates are AND'ed together when
-        // sql is generated for them.
-        for (List<List<Member>> aggregationList : aggregationLists) {
-            BitKey compoundBitKey = BitKey.Factory.makeBitKey(starColumnCount);
-            Map<BitKey, List<RolapMember[]>> compoundGroupMap =
-                new LinkedHashMap<BitKey, List<RolapMember[]>>();
 
-            // Go through the compound members/tuples once and separate them
-            // into groups.
-            List<List<RolapMember>> rolapAggregationList =
-                new ArrayList<List<RolapMember>>();
-            for (List<Member> members : aggregationList) {
-                // REVIEW: do we need to copy?
-                List<RolapMember> rolapMembers = Util.cast(members);
-                rolapAggregationList.add(rolapMembers);
-            }
-
-            final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
-            boolean unsatisfiable =
-                makeCompoundGroup(
-                    starColumnCount,
-                    measureGroup,
-                    rolapAggregationList,
-                    compoundGroupMap);
-
-            if (unsatisfiable) {
+                // unsatisfiable
                 return null;
             }
-            StarPredicate compoundPredicate =
-                makeCompoundPredicate(
-                    compoundGroupMap, measureGroup);
-
-            if (compoundPredicate != null) {
-                // Only add the compound constraint when it is not empty.
-                for (BitKey bitKey : compoundGroupMap.keySet()) {
-                    compoundBitKey = compoundBitKey.or(bitKey);
-                }
-                request.addAggregateList(compoundBitKey, compoundPredicate);
-            }
+        }
+      
+        
+        if (CollectionUtils.isEmpty(evaluator.getAggregationLists())) {
+            return request;
+        }
+        // convert aggregation lists to compound predicates
+        if (!applyCompoundPredicates(evaluator, request)) {
+            // unsatisfiable
+            return null;
         }
 
         return request;
     }
+    
+    /**
+     * Retrieves CompoundPredicateInfo for each tuple in the evaluator's
+     * aggregationLists.  Uses this to add the predicate (and its string
+     * representation) to the cell request.
+     * Returns false if any predicate results in an unsatisfiable request.
+     */
+    private static boolean applyCompoundPredicates(
+        RolapEvaluator evaluator, CellRequest request)
+    {
+        final Member[] currentMembers = evaluator.getNonAllMembers();
+        final RolapStoredMeasure measure =
+            (RolapStoredMeasure)currentMembers[0];
+        for (List<List<Member>> aggregationList
+            : evaluator.getAggregationLists())
+        {
+            CompoundPredicateInfo predicateInfo =
+                    getCompoundPredicateInfo(
+                        evaluator, measure, aggregationList);
+            if (!predicateInfo.isSatisfiable()) {
+                return false;
+            }
+            if (predicateInfo.getPredicate() != null) {
+                request.addAggregateList(
+                    predicateInfo.getBitKey(), predicateInfo.getPredicate());
+                request.addPredicateString(predicateInfo.getPredicateString());
+            }
+        }
+        return true;
+    }
 
+    /**
+     * Retrieves CompoundPredicateInfo for the aggregationList.
+     * If the aggregationList is the slicer, will attempt to retrieve the
+     * pre-built slicer predicate info from the evaluator.  This avoids the
+     * overhead of building the slicer predicates for every cell request.
+     */
+    private static CompoundPredicateInfo getCompoundPredicateInfo(
+        RolapEvaluator evaluator,
+        RolapStoredMeasure measure,
+        List<List<Member>> aggregationList)
+    {
+        CompoundPredicateInfo predicateInfo;
+        if (aggregationList.equals(evaluator.getSlicerTuples())) {
+            // slicer predicate is built once in the evaluator to
+            // avoid unnecessary duplicate effort
+            predicateInfo = evaluator.getSlicerPredicateInfo();
+            if (!measure.getMeasureGroup().equals(predicateInfo.getMeasureGroup())) {
+                predicateInfo = new CompoundPredicateInfo(
+                   aggregationList, measure, evaluator);
+                evaluator.slicerPredicateInfo = predicateInfo;
+            }
+        } else {
+            predicateInfo =  new CompoundPredicateInfo(
+                aggregationList, measure, evaluator);
+        }
+        return predicateInfo;
+    }
+
+    private static boolean applySubQueryPredicates(
+            RolapEvaluator evaluator, CellRequest request)
+    {
+        final Member[] currentMembers = evaluator.getNonAllMembers();
+        final RolapStoredMeasure measure =
+            (RolapStoredMeasure)currentMembers[0];
+        
+        CompoundPredicateInfo predicateInfo = evaluator.getSubQueryPredicateInfo();
+        //TODO: do something about multiple measuregroups     
+        if (!predicateInfo.isSatisfiable()) {
+            return false;
+        }
+        if (predicateInfo.getPredicate() != null) {
+            request.addAggregateList(
+                predicateInfo.getBitKey(), predicateInfo.getPredicate());
+            request.addPredicateString(predicateInfo.getPredicateString());
+            }
+        
+        return true;
+    }
+
+    
     private static CellRequest makeCellRequest(
         final Member[] members,
         boolean drillThrough,

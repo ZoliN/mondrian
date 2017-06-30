@@ -203,29 +203,6 @@ public class AggregationKey
         return compoundPredicateList;
     }
 
-    /**
-     * Returns a list of compound predicates, expressed as SQL strings.
-     *
-     * @param star Star
-     * @param compoundPredicateList Predicate list
-     * @return list of predicate strings
-     */
-    public static List<String> getCompoundPredicateStringList(
-        RolapStar star,
-        List<StarPredicate> compoundPredicateList)
-    {
-        if (compoundPredicateList.isEmpty()) {
-            return Collections.emptyList();
-        }
-        final List<String> cp = new ArrayList<String>();
-        final StringBuilder buf = new StringBuilder();
-        for (StarPredicate compoundPredicate : compoundPredicateList) {
-            buf.setLength(0);
-            compoundPredicate.toSql(star.getSqlQueryDialect(), buf);
-            cp.add(buf.toString());
-        }
-        return cp;
-    }
 }
 
 // End AggregationKey.java

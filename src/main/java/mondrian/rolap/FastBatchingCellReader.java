@@ -604,9 +604,7 @@ class BatchLoader {
         final Map<String, Comparable> mappedCellValues =
             request.getMappedCellValues();
         final List<String> compoundPredicates =
-            AggregationKey.getCompoundPredicateStringList(
-                key.getStar(),
-                key.getCompoundPredicateList());
+                request.getCompoundPredicateStrings();
 
         for (SegmentHeader header : cacheHeaders) {
             if (SegmentCacheIndexImpl.matches(
@@ -702,9 +700,7 @@ class BatchLoader {
                     star.getFactTable().getAlias(),
                     request.getConstrainedColumnsBitKey(),
                     mappedCellValues,
-                    AggregationKey.getCompoundPredicateStringList(
-                        star,
-                        key.getCompoundPredicateList()));
+                    request.getCompoundPredicateStrings());
             if (!rollup.isEmpty()) {
                 rollups.add(
                     new RollupInfo(

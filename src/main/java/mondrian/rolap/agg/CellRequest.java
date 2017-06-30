@@ -118,7 +118,13 @@ public class CellRequest {
      * comparison with maps of other requests and with existing segments.</p>
      */
     private SortedMap<BitKey, StarPredicate> compoundPredicateMap = null;
-
+    
+    /**
+     * List of string representations of the compound predicates contained
+     * in compoundPredicateMap, if present.
+     */
+    private List<String> compoundPredicateStrings = null;
+    
     /**
      * Whether the request is impossible to satisfy. This is set to 'true' if
      * contradictory constraints are applied to the same column. For example,
@@ -225,6 +231,15 @@ public class CellRequest {
         compoundPredicateMap.put(compoundBitKey, compoundPredicate);
     }
 
+    public void addPredicateString(
+        String predicateString)
+    {
+        if (compoundPredicateStrings == null) {
+            compoundPredicateStrings = new ArrayList<String>();
+        }
+        compoundPredicateStrings.add(predicateString);
+    }
+    
     /**
      * Returns the measure of this cell request.
      *
@@ -265,6 +280,24 @@ public class CellRequest {
         return compoundPredicateMap;
     }
 
+    public List<String> getCompoundPredicateStrings() {
+        if (compoundPredicateStrings != null) {
+            return Collections.unmodifiableList(compoundPredicateStrings);
+        }
+        if (compoundPredicateMap != null) {
+            List<String> stringPredicates = new ArrayList<String>();
+            for (StarPredicate predicate : compoundPredicateMap.values()) {
+                stringPredicates.add(
+                    CompoundPredicateInfo.getPredicateString(
+                        measure.getStar(), predicate));
+            }
+            compoundPredicateStrings =
+                Collections.unmodifiableList(stringPredicates);
+            return compoundPredicateStrings;
+        }
+        return Collections.emptyList();
+    }
+    
     /**
      * Builds the {@link #columnsCache} and {@link #columnBitPositions}
      * based upon bit key position of the columns.
