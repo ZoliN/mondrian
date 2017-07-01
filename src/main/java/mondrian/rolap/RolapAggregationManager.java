@@ -115,7 +115,7 @@ public abstract class RolapAggregationManager {
             return null;
         }
         
-        if (evaluator.getSubQueryPredicateInfo() != null) {
+        if (evaluator.getSubQueryTuples() != null) {
             if (!applySubQueryPredicates(evaluator, request)) {
 
 
@@ -199,10 +199,8 @@ public abstract class RolapAggregationManager {
             RolapEvaluator evaluator, CellRequest request)
     {
         final Member[] currentMembers = evaluator.getNonAllMembers();
-        final RolapStoredMeasure measure =
-            (RolapStoredMeasure)currentMembers[0];
-        
-        CompoundPredicateInfo predicateInfo = evaluator.getSubQueryPredicateInfo();
+
+        CompoundPredicateInfo predicateInfo = evaluator.getSubQueryPredicateInfo((RolapStoredMeasure)currentMembers[0]);
         //TODO: do something about multiple measuregroups     
         if (!predicateInfo.isSatisfiable()) {
             return false;

@@ -236,7 +236,7 @@ public class RolapResult extends ResultBase {
                         evaluator,
                         subqueryResults,
                         false);
-                evaluator.setSubQueryPredicate(subqueryResults);
+                evaluator.setSubQueryTuples(subqueryResults);
             }
 
 

@@ -95,11 +95,12 @@ public class RolapEvaluator implements Evaluator {
     protected final List<List<List<Member>>> aggregationLists;
     
     protected CompoundPredicateInfo slicerPredicateInfo;
-    protected CompoundPredicateInfo subQueryPredicateInfo;
+    protected HashMap<RolapMeasureGroup,CompoundPredicateInfo> subQueryPredicateInfoMap = new HashMap<RolapMeasureGroup,CompoundPredicateInfo>();
 
     private final List<RolapMember> slicerMembers;
     
     private TupleList slicerTuples;
+    private TupleList subQueryTuples;
 
     private boolean nativeEnabled;
     private RolapMember[] nonAllMembers;
@@ -120,8 +121,14 @@ public class RolapEvaluator implements Evaluator {
         return slicerPredicateInfo;
     }
     
-    public CompoundPredicateInfo getSubQueryPredicateInfo() {
-        return subQueryPredicateInfo;
+    public CompoundPredicateInfo getSubQueryPredicateInfo(RolapStoredMeasure measure) {
+        CompoundPredicateInfo predicateInfo = subQueryPredicateInfoMap.get(measure.getMeasureGroup());
+        if ( predicateInfo == null ) {
+            predicateInfo = new CompoundPredicateInfo(subQueryTuples, measure , this);
+            subQueryPredicateInfoMap.put(measure.getMeasureGroup(),predicateInfo);
+        }
+                
+        return predicateInfo;
     }
 
 
@@ -167,7 +174,8 @@ public class RolapEvaluator implements Evaluator {
         slicerMembers = new ArrayList<RolapMember>(parent.slicerMembers);
         slicerTuples = parent.slicerTuples;
         slicerPredicateInfo = parent.slicerPredicateInfo;
-        subQueryPredicateInfo = parent.subQueryPredicateInfo;
+        subQueryTuples = parent.subQueryTuples;
+        subQueryPredicateInfoMap = parent.subQueryPredicateInfoMap;
         expandingMember = parent.expandingMember;
 
         commands = new Object[10];
@@ -539,13 +547,23 @@ public class RolapEvaluator implements Evaluator {
         return slicerTuples;
     }
 
+    /**
+     * Sets the slicer tuple object, used later by native evaluation and
+     * non-empty crossjoins.
+     *
+     * @param tuples slicer
+     */
+    public final void setSubQueryTuples(TupleList tuples) {
+        subQueryTuples = tuples;
+    }
 
+    /**
+     * Return the list of compound slicer tuples
+     */
+    public final TupleList getSubQueryTuples() {
+        return subQueryTuples;
+    }
 
-    public final void setSubQueryPredicate(TupleList tuples) {
-        subQueryPredicateInfo = new CompoundPredicateInfo(
-             tuples, (RolapMeasure)currentMembers[0], this);
-
-     }
 
     
     public final Member setContext(Member member) {
