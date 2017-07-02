@@ -36,6 +36,8 @@ class DrilldownMemberFunDef extends FunDefBase {
             DrilldownMemberFunDef.class,
             reservedWords);
 
+    static private final int ctag = FunUtil.counterTag++;
+    
     public DrilldownMemberFunDef(FunDef funDef) {
         super(funDef);
     }
@@ -153,7 +155,7 @@ class DrilldownMemberFunDef extends FunDefBase {
                     result.add(o);
                     drillDownObj(evaluator, members, set1, result, hier);
                 }
-                return result;
+                return CrossJoinFunDef.nonEmptyOptimizeList(evaluator, result, (ResolvedFunCall) exp, ctag);
             }
         };
     }
