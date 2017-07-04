@@ -81,8 +81,8 @@ public abstract class RolapAggregationManager {
         List<Exp> fieldsList)
     {
         assert cube != null;
-        return (DrillThroughCellRequest) makeCellRequest(
-            members, true, extendedContext, cube, fieldsList, null);
+        return (DrillThroughCellRequest) makeCellRequestDrillThrough(
+            members, extendedContext, cube, fieldsList, null);
     }
 
     /**
@@ -223,155 +223,44 @@ public abstract class RolapAggregationManager {
         List<Exp> fieldsList,
         Evaluator evaluator)
     {
-        final List<RolapMember> rolapMembers =
-            new ArrayList<RolapMember>((List) Arrays.asList(members));
-        return makeCellRequest(
-            rolapMembers,
-            drillThrough,
-            extendedContext,
-            cube,
-            fieldsList,
-            evaluator);
-    }
-
-    private static CellRequest makeCellRequest(
-        final List<RolapMember> memberList,
-        boolean drillThrough,
-        final boolean extendedContext,
-        RolapCube cube,
-        List<Exp> fieldsList,
-        Evaluator evaluator)
-    {
-        // Need cube for drill-through requests
-        assert drillThrough == (cube != null);
-
         if (extendedContext) {
             assert drillThrough;
         }
-
-        final RolapStoredMeasure measure;
         if (drillThrough) {
-            cube = RolapCell.chooseDrillThroughCube(memberList, cube);
-            if (cube == null) {
-                return null;
-            }
-            if (memberList.size() > 0
-                && memberList.get(0) instanceof RolapStoredMeasure)
-            {
-                measure = (RolapStoredMeasure) memberList.get(0);
-            } else {
-                measure = (RolapStoredMeasure) cube.getMeasures().get(0);
-            }
+            final List<RolapMember> rolapMembers =
+                new ArrayList<RolapMember>((List) Arrays.asList(members));
+            return makeCellRequestDrillThrough(
+                rolapMembers,
+                extendedContext,
+                cube,
+                fieldsList,
+                evaluator);
         } else {
-            if (memberList.size() > 0
-                && memberList.get(0) instanceof RolapStoredMeasure)
+
+            final RolapStoredMeasure measure;
+
+            if (members.length > 0
+                && members[0] instanceof RolapStoredMeasure)
             {
-                measure = (RolapStoredMeasure) memberList.get(0);
+                measure = (RolapStoredMeasure) members[0];
             } else {
                 return null;
             }
-        }
+            
 
-        final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
-        final RolapStar.Measure starMeasure = measure.getStarMeasure();
-        assert starMeasure != null;
+            final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
+            final RolapStar.Measure starMeasure = measure.getStarMeasure();
+            assert starMeasure != null;
 
-        if (drillThrough) {
-            // This is a drillthrough request.
-            DrillThroughCellRequest request =
-                new DrillThroughCellRequest(starMeasure, extendedContext);
-            if (fieldsList != null
-                && fieldsList.size() > 0)
-            {
-                // Since a field list was specified, there will be some columns
-                // to include in the result set & others that we don't. This
-                // happens when the MDX is a DRILLTHROUGH operation and
-                // includes a RETURN clause which specified exactly which
-                // fields to return.
-                final SchemaReader reader = cube.getSchemaReader().withLocus();
-                for (Exp exp : fieldsList) {
-                    final OlapElement member =
-                        reader.lookupCompound(
-                            cube,
-                            Util.parseIdentifier(exp.toString()),
-                            false,
-                            Category.Unknown);
-                    if (member == null) {
-                        throw MondrianResource.instance()
-                            .DrillthroughUnknownMemberInReturnClause
-                                .ex(exp.toString());
-                    }
-                    addDrillthroughColumn(member, measureGroup, request);
-                }
-            }
-
-            // Sort the members.  Columns will be added to
-            // DrillThroughCellRequest which will preserve the order
-            // they are added.
-            Collections.sort(
-                memberList,
-                new CubeOrderedMemberLevelComparator(cube.getDimensionList()));
-
-            // Iterate over members.
-            for (RolapMember member : memberList) {
-                if (member.getHierarchy().getRolapHierarchy().closureFor
-                    != null)
-                {
-                    // If this gets called for an internal "closure" level,
-                    // we skip this level.
-                    // REVIEW: Why should this ever happen??
-                    continue;
-                }
-                // Start by constraining the request on the current member.
-                // This will result in a SQL with a WHERE clause which will
-                // limit the rows to those covered by the current cell.
-                RolapCubeLevel level = member.getLevel();
-                final boolean needToReturnNull =
-                    level.getLevelReader().constrainRequest(
-                        member, measureGroup, request);
-                if (needToReturnNull) {
-                    return null;
-                }
-                if (fieldsList == null
-                    || fieldsList.size() == 0)
-                {
-                    // There was no RETURN clause in the query.
-                    // We add the key columns of the non-all members
-                    // which are part of the evaluator.
-                    // This is the default behavior.
-                    if (member.getDimension().isMeasures()) {
-                        // Measures are a bit different.
-                        if (!member.isCalculated()) {
-                            request.addDrillThroughMeasure(
-                                ((RolapStoredMeasure)member).getStarMeasure(),
-                                member.getName());
-                        }
-                    } else {
-                        // We can't add 'all' levels, since they don't
-                        // map to a DB column.
-                        if (!level.isAll()) {
-                            addNonConstrainingColumns(
-                                level, measureGroup, request);
-                            if (extendedContext) {
-                                while (level.getChildLevel() != null) {
-                                    level = level.getChildLevel();
-                                    addNonConstrainingColumns(
-                                        level, measureGroup, request);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return request;
-        } else {
+            
             // This is the code path for regular cell requests.
             // For each member in the evaluator, we constrain the request.
             CellRequest request =
                 new CellRequest(starMeasure, extendedContext, drillThrough);
-            for (RolapMember member : Util.subList(memberList, 1)) {
+            for (int i = 1; i < members.length; i++) {
+                RolapMember member = (RolapMember)members[i];
                 if (
-                    member instanceof
+                        member instanceof
                         RestrictedMemberReader.MultiCardinalityDefaultMember)
                 {
                     continue;
@@ -379,7 +268,7 @@ public abstract class RolapAggregationManager {
                 final RolapCubeLevel level = member.getLevel();
                 final boolean needToReturnNull =
                     level.getLevelReader().constrainRequest(
-                        member, measureGroup, request);
+                            member, measureGroup, request);
                 if (needToReturnNull) {
                     // check to see if the current member is part of an ignored
                     // unrelated dimension
@@ -392,7 +281,128 @@ public abstract class RolapAggregationManager {
                 }
             }
             return request;
+        }            
+    
+    }
+
+    private static CellRequest makeCellRequestDrillThrough(
+        final List<RolapMember> memberList,
+        final boolean extendedContext,
+        RolapCube cube,
+        List<Exp> fieldsList,
+        Evaluator evaluator)
+    {
+        // Need cube for drill-through requests
+        assert (cube != null);
+
+
+        final RolapStoredMeasure measure;
+
+        cube = RolapCell.chooseDrillThroughCube(memberList, cube);
+        if (cube == null) {
+            return null;
         }
+        if (memberList.size() > 0
+            && memberList.get(0) instanceof RolapStoredMeasure)
+        {
+            measure = (RolapStoredMeasure) memberList.get(0);
+        } else {
+            measure = (RolapStoredMeasure) cube.getMeasures().get(0);
+        }
+
+
+        final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
+        final RolapStar.Measure starMeasure = measure.getStarMeasure();
+        assert starMeasure != null;
+
+        // This is a drillthrough request.
+        DrillThroughCellRequest request =
+            new DrillThroughCellRequest(starMeasure, extendedContext);
+        if (fieldsList != null
+            && fieldsList.size() > 0)
+        {
+            // Since a field list was specified, there will be some columns
+            // to include in the result set & others that we don't. This
+            // happens when the MDX is a DRILLTHROUGH operation and
+            // includes a RETURN clause which specified exactly which
+            // fields to return.
+            final SchemaReader reader = cube.getSchemaReader().withLocus();
+            for (Exp exp : fieldsList) {
+                final OlapElement member =
+                    reader.lookupCompound(
+                        cube,
+                        Util.parseIdentifier(exp.toString()),
+                        false,
+                        Category.Unknown);
+                if (member == null) {
+                    throw MondrianResource.instance()
+                        .DrillthroughUnknownMemberInReturnClause
+                            .ex(exp.toString());
+                }
+                addDrillthroughColumn(member, measureGroup, request);
+            }
+        }
+
+        // Sort the members.  Columns will be added to
+        // DrillThroughCellRequest which will preserve the order
+        // they are added.
+        Collections.sort(
+            memberList,
+            new CubeOrderedMemberLevelComparator(cube.getDimensionList()));
+
+        // Iterate over members.
+        for (RolapMember member : memberList) {
+            if (member.getHierarchy().getRolapHierarchy().closureFor
+                != null)
+            {
+                // If this gets called for an internal "closure" level,
+                // we skip this level.
+                // REVIEW: Why should this ever happen??
+                continue;
+            }
+            // Start by constraining the request on the current member.
+            // This will result in a SQL with a WHERE clause which will
+            // limit the rows to those covered by the current cell.
+            RolapCubeLevel level = member.getLevel();
+            final boolean needToReturnNull =
+                level.getLevelReader().constrainRequest(
+                    member, measureGroup, request);
+            if (needToReturnNull) {
+                return null;
+            }
+            if (fieldsList == null
+                || fieldsList.size() == 0)
+            {
+                // There was no RETURN clause in the query.
+                // We add the key columns of the non-all members
+                // which are part of the evaluator.
+                // This is the default behavior.
+                if (member.getDimension().isMeasures()) {
+                    // Measures are a bit different.
+                    if (!member.isCalculated()) {
+                        request.addDrillThroughMeasure(
+                            ((RolapStoredMeasure)member).getStarMeasure(),
+                            member.getName());
+                    }
+                } else {
+                    // We can't add 'all' levels, since they don't
+                    // map to a DB column.
+                    if (!level.isAll()) {
+                        addNonConstrainingColumns(
+                            level, measureGroup, request);
+                        if (extendedContext) {
+                            while (level.getChildLevel() != null) {
+                                level = level.getChildLevel();
+                                addNonConstrainingColumns(
+                                    level, measureGroup, request);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return request;
+        
     }
 
     /**
