@@ -229,15 +229,8 @@ public class RolapResult extends ResultBase {
                 Collections.emptyList();
             
             TupleList subqueryResults = null;
-            if (query.getSubQuery()!=null) subqueryResults = executeSubQuery(query.getSubQuery(), evaluator.push());
-            if (subqueryResults!=null) {
-                subqueryResults =
-                    AggregateFunDef.AggregateCalc.optimizeTupleList(
-                        evaluator,
-                        subqueryResults,
-                        false);
-                evaluator.setSubQueryTuples(subqueryResults);
-            }
+            if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
+
 
 
             // Initial evaluator, to execute slicer.
@@ -521,134 +514,10 @@ public class RolapResult extends ResultBase {
     }
 
     
-    
-    
-    
-    static class SubQCrossJoinIterCalc extends AbstractIterCalc
-    {
-        TupleIterable subqSet;
         
-        SubQCrossJoinIterCalc( Calc[] calcs , TupleIterable subqSet) {
-            //mondrian.olap.type.TupleType tt = new mondrian.olap.type.TupleType(new MemberType[6]);
-            super(new DummyExp(new SetType(new mondrian.olap.type.TupleType(new MemberType[calcArity(calcs ,subqSet)]))), calcs);
-            this.subqSet = subqSet;
-        }
+    void executeSubQuery(Query query,RolapEvaluator evaluator) {
         
-        private static int calcArity(Calc[] calcs , TupleIterable subqSet) {
-            int totalArity=0;
-            for (int j = 0; j < calcs.length; j++) {
-                totalArity += calcs[j].getType().getArity();
-            }   
-            totalArity += subqSet.getArity();
-            return totalArity;
-        }
-
-        public TupleIterable evaluateIterable(Evaluator evaluator) {
-
-            Calc[] calcs = getCalcs();
-            TupleIterable[] o= new TupleIterable[calcs.length+1];
-            
-            for (int i = 0; i < calcs.length; i++) {
-                o[i] = ((IterCalc)calcs[i]).evaluateIterable(evaluator);
-            }
-
-            o[calcs.length] = subqSet;
-
-            return makeIterable(o);
-        }
-
-        public static TupleIterable makeIterable(
-            final TupleIterable[] it)
-        {
-            // There is no knowledge about how large either it1 ore it2
-            // are or how many null members they might have, so all
-            // one can do is iterate across them:
-            // iterate across it1 and for each member iterate across it2
-            int totalArity=0;
-            for (int j = 0; j < it.length; j++) {
-                totalArity += it[j].getArity();
-            }
-
-            return new AbstractTupleIterable(totalArity) {
-                private TupleCursor[] tcs;
-                public TupleCursor tupleCursor() {
-                    tcs = new TupleCursor[it.length];
-                    for (int i = 0; i < it.length-1; i++) {
-                        tcs[i] = it[i].tupleCursor();
-                        tcs[i].forward();
-                    }
-                    tcs[it.length-1] = it[it.length-1].tupleCursor();
-                    return new AbstractTupleCursor(getArity()) {
-                        final Member[] members = new Member[arity];
-                        final int lasttc = tcs.length-1;
-                        
-                        public boolean forward() {
-                            int c=lasttc;
-                            while(true) {
-                                if (tcs[c].forward())
-                                    return true;
-                                if (c==0) 
-                                    return false;
-                                tcs[c]=it[c].tupleCursor();
-                                tcs[c].forward();
-                                c--;
-                            }
-                        }
-
-                        public List<Member> current() {
-                            int cumulArity=0;
-                            for (int i = 0; i < tcs.length; i++) {
-                                tcs[i].currentToArray(members,cumulArity);
-                                cumulArity += it[i].getArity();
-                            }
-                            return Util.flatList(members);
-                        }
-
-                        @Override
-                        public Member member(int column) {
-                            int cumulArity=0;
-                            int i = 0;
-                            while ((cumulArity + it[i].getArity())<=column)  {
-                                cumulArity += it[i].getArity();
-                                i++;
-                            }
-                            return tcs[i].member(column-cumulArity);
-
-                        }
-
-                        @Override
-                        public void setContext(Evaluator evaluator) {
-                            for (int i = 0; i < tcs.length; i++) {
-                                tcs[i].setContext(evaluator);
-                            }
-
-                        }
-
-                        @Override
-                        public void currentToArray(
-                            Member[] members,
-                            int offset)
-                        {
-                            int cumulArity=0;
-                            for (int i = 0; i < tcs.length; i++) {
-                                tcs[i].currentToArray(members, offset + cumulArity);
-                                cumulArity += it[i].getArity();
-                            }
-                        }
-                    };
-                }
-            };
-        }
-    }
-    
-    
-    
-   
-    
-    TupleList executeSubQuery(Query query,RolapEvaluator evaluator) {
-        
-        TupleIterable subQueryTuples = null;
-        if (query.getSubQuery()!=null) subQueryTuples = executeSubQuery(query.getSubQuery(), evaluator.push());
+        if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
         
         /*Axis[] axes;
         axes = new Axis[query.getAxes().length];
@@ -757,10 +626,18 @@ public class RolapResult extends ResultBase {
         evaluator.restore(savepoint);
         
         for (int i = 0; i < query.axes.length; i++) {
-            subQueryTuples = subQueryTuples!=null?SubQCrossJoinIterCalc.makeIterable(new TupleIterable[]{subQueryTuples,tupleIterable[i]}):tupleIterable[i];
+            if (tupleIterable[i]!=null) {
+                 
+                TupleList tuples =
+                    AggregateFunDef.AggregateCalc.optimizeTupleList(
+                        evaluator,
+                        TupleCollections.materialize(tupleIterable[i], false),
+                        false);
+                evaluator.addSubQueryTuples(tuples);
+            }
         }
         
-        return TupleCollections.materialize(subQueryTuples, false); 
+        return; 
         
     }
     

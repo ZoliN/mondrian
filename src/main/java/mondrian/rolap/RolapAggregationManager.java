@@ -115,7 +115,7 @@ public abstract class RolapAggregationManager {
             return null;
         }
         
-        if (evaluator.getSubQueryTuples() != null) {
+        if (evaluator.getSubQueryTuples().size() != 0) {
             if (!applySubQueryPredicates(evaluator, request)) {
 
 
@@ -200,17 +200,19 @@ public abstract class RolapAggregationManager {
     {
         final Member[] currentMembers = evaluator.getNonAllMembers();
 
-        CompoundPredicateInfo predicateInfo = evaluator.getSubQueryPredicateInfo((RolapStoredMeasure)currentMembers[0]);
-        //TODO: do something about multiple measuregroups     
-        if (!predicateInfo.isSatisfiable()) {
-            return false;
-        }
-        if (predicateInfo.getPredicate() != null) {
-            request.addAggregateList(
-                predicateInfo.getBitKey(), predicateInfo.getPredicate());
-            request.addPredicateString(predicateInfo.getPredicateString());
+        List<CompoundPredicateInfo> predicateInfos = evaluator.getSubQueryPredicateInfo((RolapStoredMeasure)currentMembers[0]);
+        for (CompoundPredicateInfo predicateInfo : predicateInfos) {
+            if (!predicateInfo.isSatisfiable()) {
+                return false;
             }
-        
+            if (predicateInfo.getPredicate() != null) {
+                request.addAggregateList(
+                    predicateInfo.getBitKey(), predicateInfo.getPredicate());
+                request.addPredicateString(predicateInfo.getPredicateString());
+                }
+                       
+        }
+
         return true;
     }
 
