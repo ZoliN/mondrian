@@ -2152,7 +2152,7 @@ public class RolapSchema extends OlapElementBase implements Schema {
         protected final int columnSize;
         private final int ordinal;
         SqlStatement.Type internalType; // may be null
-
+        
         public PhysColumn(
             PhysRelation relation,
             String name,
@@ -2217,6 +2217,7 @@ public class RolapSchema extends OlapElementBase implements Schema {
 
     public static final class PhysRealColumn extends PhysColumn {
         private final String sql;
+        private final int hashCode;
 
         PhysRealColumn(
             PhysRelation relation,
@@ -2227,6 +2228,7 @@ public class RolapSchema extends OlapElementBase implements Schema {
         {
             super(relation, name, columnSize, datatype, internalType);
             this.sql = deriveSql();
+            this.hashCode = Util.hash(name.hashCode(), relation);
         }
 
         @Override
@@ -2243,7 +2245,7 @@ public class RolapSchema extends OlapElementBase implements Schema {
         }
 
         public int hashCode() {
-            return Util.hash(name.hashCode(), relation);
+            return hashCode;
         }
 
         public boolean equals(Object obj) {
