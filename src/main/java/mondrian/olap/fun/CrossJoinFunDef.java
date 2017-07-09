@@ -540,6 +540,14 @@ public class CrossJoinFunDef extends FunDefBase {
         return mutableCrossJoin(Arrays.asList(list1, list2));
     }
 
+    public static TupleList mutableCrossJoinXL(
+            TupleList list1,
+            TupleList list2)
+    {
+        return mutableCrossJoinXL(Arrays.asList(list1, list2));
+    }
+    
+    
     public static TupleList mutableCrossJoin(
         List<TupleList> lists)
     {
@@ -573,6 +581,65 @@ public class CrossJoinFunDef extends FunDefBase {
         return new ListTupleList(arity, result);
     }
 
+    public static TupleList mutableCrossJoinXL(
+            List<TupleList> lists)
+        {
+            long size = 1;
+            int arity = 0;
+            for (TupleList list : lists) {
+                size *= (long) list.size();
+                arity += list.getArity();
+            }
+            if (size == 0L) {
+                return TupleCollections.emptyList(arity);
+            }
+
+            // Optimize nonempty(crossjoin(a,b)) ==
+            //  nonempty(crossjoin(nonempty(a),nonempty(b))
+
+            // FIXME: If we're going to apply a NON EMPTY constraint later, it's
+            // possible that the ultimate result will be much smaller.
+
+            Util.checkCJResultLimit(size);
+
+            // Now we can safely cast size to an integer. It still might be very
+            // large - which means we're allocating a huge array which we might
+            // pare down later by applying NON EMPTY constraints - which is a
+            // concern.
+            List<Member> result = new ArrayList<Member>((int) size * arity);
+
+            final Member[] partialArray = new Member[arity];
+            final List<Member> partial = Arrays.asList(partialArray);
+            cartesianProductRecurse(0, lists, partial, partialArray, 0, result);
+            
+            List<Member> resultFiltered = new ArrayList<Member>((int) size * arity);
+            for (int i = 0; i < result.size(); i+=arity) {
+                boolean gotAll1 = false;
+                for (int j = i; j < i+lists.get(0).getArity(); j++) {
+                    if (result.get(j).isAll()) {
+                        gotAll1 = true;
+                        break;
+                    }
+                }
+                if (gotAll1) {
+                    boolean gotNonAll2 = false;
+                    for (int j = i+lists.get(0).getArity(); j < i+arity; j++) {
+                        if (!result.get(j).isAll()) {
+                            gotNonAll2 = true;
+                            break;
+                        }
+                    }
+                    if (gotNonAll2) continue;
+                    
+                }
+                for (int j = i; j < i+arity; j++) {
+                    resultFiltered.add(result.get(j));
+                }
+            }
+            
+            return new ListTupleList(arity, resultFiltered);
+        }
+    
     private static void cartesianProductRecurse(
         int i,
         List<TupleList> lists,

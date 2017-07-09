@@ -12,6 +12,7 @@ package mondrian.rolap;
 
 import mondrian.olap.*;
 import mondrian.olap.fun.NonEmptyCrossJoinFunDef;
+import mondrian.olap.fun.NonEmptyCrossJoinXLFunDef;
 import mondrian.rolap.sql.*;
 
 import java.util.*;
@@ -318,7 +319,7 @@ public class RolapNativeCrossJoin extends RolapNativeSet {
     }
 
     private boolean safeToConstrainByOtherAxes(final FunDef fun) {
-        return !(fun instanceof NonEmptyCrossJoinFunDef);
+        return !(fun instanceof NonEmptyCrossJoinFunDef) && !(fun instanceof NonEmptyCrossJoinXLFunDef);
     }
 
     private void alertCrossJoinNonNative(
@@ -326,7 +327,7 @@ public class RolapNativeCrossJoin extends RolapNativeSet {
         FunDef fun,
         String reason)
     {
-        if (!(fun instanceof NonEmptyCrossJoinFunDef)) {
+        if (!(fun instanceof NonEmptyCrossJoinFunDef) && !(fun instanceof NonEmptyCrossJoinXLFunDef)) {
             // Only alert for an explicit NonEmptyCrossJoin,
             // since query authors use that to indicate that
             // they expect it to be "wicked fast"
