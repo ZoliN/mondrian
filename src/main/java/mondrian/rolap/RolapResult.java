@@ -460,6 +460,9 @@ public class RolapResult extends ResultBase {
 
             evaluator.restore(savepoint);
 
+            for (int i = 0; i < axes.length; i++) {
+                System.out.println("Axis " + i + " size: "+axes[i].getPositions().size());
+            }
             // Get value for each Cell
             final Locus locus = new Locus(execution, null, "Loading cells");
             Locus.push(locus);
@@ -516,7 +519,8 @@ public class RolapResult extends ResultBase {
     
         
     void executeSubQuery(Query query,RolapEvaluator evaluator) {
-        
+        System.out.println("Subquery: " + query.toString());
+
         if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
         
         /*Axis[] axes;
