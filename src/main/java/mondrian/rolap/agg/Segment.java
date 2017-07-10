@@ -107,7 +107,9 @@ public class Segment {
     protected final List<ExcludedRegion> excludedRegions;
 
     private final int aggregationKeyHashCode;
+    private final int volaAggregationKeyHashCode;
     protected final List<StarPredicate> compoundPredicateList;
+    protected final List<StarPredicate> volaCompoundPredicateList;
 
     private final SegmentHeader segmentHeader;
 
@@ -131,7 +133,8 @@ public class Segment {
         RolapStar.Measure baseMeasure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         this.id = nextId++;
         this.star = star;
@@ -161,6 +164,25 @@ public class Segment {
                 constrainedColumnsBitKey,
                 star,
                 compoundPredicateBitKeys);
+        this.volaCompoundPredicateList = volaCompoundPredicateList;
+        final List<BitKey> volaCompoundPredicateBitKeys =
+            volaCompoundPredicateList == null
+                ? null
+                : new AbstractList<BitKey>() {
+                    public BitKey get(int index) {
+                        return volaCompoundPredicateList.get(index)
+                            .getConstrainedColumnBitKey();
+                    }
+
+                    public int size() {
+                        return volaCompoundPredicateList.size();
+                    }
+                };
+        this.volaAggregationKeyHashCode =
+            AggregationKey.computeHashCode(
+                constrainedColumnsBitKey,
+                star,
+                volaCompoundPredicateBitKeys);
         this.segmentHeader =
             SegmentBuilder.toHeader(
                 star.getFactTable().getRelation().getSchema().statistic,
@@ -174,7 +196,8 @@ public class Segment {
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         this(
             star,
@@ -183,7 +206,8 @@ public class Segment {
             measure, measure,
             predicates,
             excludedRegions,
-            compoundPredicateList);
+            compoundPredicateList,
+            volaCompoundPredicateList);
     }
 
     public static Segment create(
@@ -194,7 +218,8 @@ public class Segment {
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         if (starConverter != null) {
             return new Segment(
@@ -206,7 +231,8 @@ public class Segment {
                 starConverter.convertMeasure(measure),
                 predicates,
                 Collections.<ExcludedRegion>emptyList(),
-                starConverter.convertPredicateList(compoundPredicateList));
+                starConverter.convertPredicateList(compoundPredicateList),
+                starConverter.convertPredicateList(volaCompoundPredicateList));
         } else {
             return new Segment(
                 star,
@@ -215,7 +241,8 @@ public class Segment {
                 measure,
                 predicates,
                 excludedRegions,
-                compoundPredicateList);
+                compoundPredicateList,
+                volaCompoundPredicateList);
         }
     }
 

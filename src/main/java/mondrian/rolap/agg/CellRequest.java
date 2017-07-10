@@ -125,6 +125,8 @@ public class CellRequest {
      */
     private List<String> compoundPredicateStrings = null;
     
+    private SortedMap<BitKey, StarPredicate> volaCompoundPredicateMap = null;
+    
     /**
      * Whether the request is impossible to satisfy. This is set to 'true' if
      * contradictory constraints are applied to the same column. For example,
@@ -223,14 +225,27 @@ public class CellRequest {
      */
     public void addAggregateList(
         BitKey compoundBitKey,
-        StarPredicate compoundPredicate)
+        StarPredicate compoundPredicate,
+        boolean isVolatile)
     {
         if (compoundPredicateMap == null) {
             compoundPredicateMap = new TreeMap<BitKey, StarPredicate>();
         }
         compoundPredicateMap.put(compoundBitKey, compoundPredicate);
+        if (isVolatile) {
+            if (volaCompoundPredicateMap == null) {
+                volaCompoundPredicateMap = new TreeMap<BitKey, StarPredicate>();
+            }
+            volaCompoundPredicateMap.put(compoundBitKey, compoundPredicate);
+        }
     }
 
+    public void setCompoundPredicateMap(
+            SortedMap<BitKey, StarPredicate> compoundPredicateMap)
+    {
+        this.compoundPredicateMap = compoundPredicateMap;
+    }
+    
     public void addPredicateString(
         String predicateString)
     {
@@ -238,6 +253,12 @@ public class CellRequest {
             compoundPredicateStrings = new ArrayList<String>();
         }
         compoundPredicateStrings.add(predicateString);
+    }
+    
+    public void setCompoundPredicateStrings(
+            List<String> compoundPredicateStrings)
+    {
+        this.compoundPredicateStrings = compoundPredicateStrings;
     }
     
     /**
@@ -279,7 +300,11 @@ public class CellRequest {
     SortedMap<BitKey, StarPredicate> getCompoundPredicateMap() {
         return compoundPredicateMap;
     }
-
+    
+    public SortedMap<BitKey, StarPredicate> getVolaCompoundPredicateMap() {
+        return volaCompoundPredicateMap;
+    }
+    
     public List<String> getCompoundPredicateStrings() {
         if (compoundPredicateStrings != null) {
             return Collections.unmodifiableList(compoundPredicateStrings);

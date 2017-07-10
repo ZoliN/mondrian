@@ -131,7 +131,7 @@ public class RolapStar {
     {
         // REVIEW: Is it possible to optimize this so not every cell lookup
         // causes an AggregationKey to be created?
-        AggregationKey aggregationKey = AggregationKey.create(request);
+        AggregationKey aggregationKey = request.getVolaCompoundPredicateMap()==null ? null : AggregationKey.create(request);
 
         final Bar bar = localBars.get();
         for (SegmentWithData segment : Util.GcIterator.over(bar.segmentRefs)) {
@@ -141,7 +141,7 @@ public class RolapStar {
                 continue;
             }
 
-            if (!segment.matches(aggregationKey, request.getMeasure())) {
+            if (aggregationKey != null && !segment.matches(aggregationKey, request.getMeasure())) {
                 continue;
             }
 

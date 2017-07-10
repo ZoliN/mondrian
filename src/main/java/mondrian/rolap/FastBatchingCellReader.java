@@ -711,7 +711,8 @@ class BatchLoader {
                     SegmentCacheIndexImpl.makeConverterKey(request, key),
                     new SegmentBuilder.StarSegmentConverter(
                         measure,
-                        key.getCompoundPredicateList()));
+                        key.getCompoundPredicateList(),
+                        key.getVolaCompoundPredicateList()));
                 return true;
             }
         }
@@ -1058,6 +1059,7 @@ class BatchLoader {
                 cellRequestCount,
                 batchCollector.getGroupingSets(),
                 detailedBatch.batchKey.getCompoundPredicateList(),
+                detailedBatch.batchKey.getVolaCompoundPredicateList(),
                 segmentFutures);
         }
 
@@ -1795,6 +1797,7 @@ class BatchLoader {
                     new AggregationKey(
                         newBitKey,
                         newStar,
+                        Collections.<StarPredicate>emptyList(),
                         Collections.<StarPredicate>emptyList()));
             for (RolapStar.Measure measure : measuresList) {
                 newBatch.measuresList.add(

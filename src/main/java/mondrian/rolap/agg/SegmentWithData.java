@@ -71,6 +71,7 @@ public class SegmentWithData extends Segment {
             segment.predicates,
             segment.getExcludedRegions(),
             segment.compoundPredicateList,
+            segment.volaCompoundPredicateList,
             data,
             axes);
         if (segment instanceof SegmentWithData) {
@@ -95,6 +96,7 @@ public class SegmentWithData extends Segment {
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
         final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList,
         SegmentDataset data,
         SegmentAxis[] axes)
     {
@@ -105,7 +107,8 @@ public class SegmentWithData extends Segment {
             measure,
             predicates,
             excludedRegions,
-            compoundPredicateList);
+            compoundPredicateList,
+            volaCompoundPredicateList);
         this.axes = axes;
         this.data = data;
     }
@@ -333,7 +336,7 @@ public class SegmentWithData extends Segment {
         // Create a segment with the new data set.
         return new SegmentWithData(
             star, constrainedColumnsBitKey, columns, measure,
-            newPredicates, excludedRegions, compoundPredicateList,
+            newPredicates, excludedRegions, compoundPredicateList,volaCompoundPredicateList,
             newData, newAxes);
     }
 

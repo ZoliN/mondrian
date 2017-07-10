@@ -231,7 +231,9 @@ public class RolapResult extends ResultBase {
             TupleList subqueryResults = null;
             if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
 
-
+            for (RolapStar star : cube.getStars()) {
+                star.clearCachedAggregations(true);
+            }
 
             // Initial evaluator, to execute slicer.
             slicerEvaluator = evaluator.push();
