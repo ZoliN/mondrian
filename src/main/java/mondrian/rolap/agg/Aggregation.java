@@ -58,6 +58,7 @@ import static mondrian.spi.DataServicesLocator.*;
 public class Aggregation {
 
     private final List<StarPredicate> compoundPredicateList;
+    private final List<StarPredicate> volaCompoundPredicateList;
     private final RolapStar star;
     private final BitKey constrainedColumnsBitKey;
 
@@ -83,6 +84,7 @@ public class Aggregation {
         AggregationKey aggregationKey)
     {
         this.compoundPredicateList = aggregationKey.getCompoundPredicateList();
+        this.volaCompoundPredicateList = aggregationKey.getVolaCompoundPredicateList();
         this.star = aggregationKey.getStar();
         this.constrainedColumnsBitKey =
             aggregationKey.getConstrainedColumnsBitKey();
@@ -153,6 +155,7 @@ public class Aggregation {
                 new ArrayList<GroupingSet>(
                     Collections.singletonList(groupingSet)),
                 compoundPredicateList,
+                volaCompoundPredicateList,
                 segmentFutures);
         }
     }
@@ -176,7 +179,8 @@ public class Aggregation {
                     measure,
                     predicates,
                     Collections.<Segment.ExcludedRegion>emptyList(),
-                    compoundPredicateList);
+                    compoundPredicateList,
+                    volaCompoundPredicateList);
             segments.add(segment);
         }
 

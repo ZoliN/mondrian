@@ -159,9 +159,8 @@ public abstract class RolapAggregationManager {
                 return false;
             }
             if (predicateInfo.getPredicate() != null) {
-                request.addAggregateList(
-                    predicateInfo.getBitKey(), predicateInfo.getPredicate());
-                request.addPredicateString(predicateInfo.getPredicateString());
+                request.addVolaCompoundPredicate(
+                    predicateInfo.getBitKey(), predicateInfo.getPredicate(), predicateInfo.getPredicateString());
             }
         }
         return true;
@@ -199,19 +198,9 @@ public abstract class RolapAggregationManager {
             RolapEvaluator evaluator, CellRequest request)
     {
         final Member[] currentMembers = evaluator.getNonAllMembers();
-
-        List<CompoundPredicateInfo> predicateInfos = evaluator.getSubQueryPredicateInfo((RolapStoredMeasure)currentMembers[0]);
-        for (CompoundPredicateInfo predicateInfo : predicateInfos) {
-            if (!predicateInfo.isSatisfiable()) {
-                return false;
-            }
-            if (predicateInfo.getPredicate() != null) {
-                request.addAggregateList(
-                    predicateInfo.getBitKey(), predicateInfo.getPredicate());
-                request.addPredicateString(predicateInfo.getPredicateString());
-                }
-                       
-        }
+        Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> compoundPredicates = evaluator.getSubQueryCompoundPredicates((RolapStoredMeasure)currentMembers[0]);
+        if (compoundPredicates == null) return false;
+        request.setNonVolaCompoundPredicates(compoundPredicates.left,compoundPredicates.right);
 
         return true;
     }

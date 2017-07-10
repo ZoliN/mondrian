@@ -108,6 +108,7 @@ public class Segment {
 
     private final int aggregationKeyHashCode;
     protected final List<StarPredicate> compoundPredicateList;
+    protected final List<StarPredicate> volaCompoundPredicateList;
 
     private final SegmentHeader segmentHeader;
 
@@ -131,7 +132,8 @@ public class Segment {
         RolapStar.Measure baseMeasure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         this.id = nextId++;
         this.star = star;
@@ -161,6 +163,20 @@ public class Segment {
                 constrainedColumnsBitKey,
                 star,
                 compoundPredicateBitKeys);
+        this.volaCompoundPredicateList = volaCompoundPredicateList;
+        final List<BitKey> volaCompoundPredicateBitKeys =
+            volaCompoundPredicateList == null
+                ? null
+                : new AbstractList<BitKey>() {
+                    public BitKey get(int index) {
+                        return volaCompoundPredicateList.get(index)
+                            .getConstrainedColumnBitKey();
+                    }
+
+                    public int size() {
+                        return volaCompoundPredicateList.size();
+                    }
+                };
         this.segmentHeader =
             SegmentBuilder.toHeader(
                 star.getFactTable().getRelation().getSchema().statistic,
@@ -174,7 +190,8 @@ public class Segment {
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         this(
             star,
@@ -183,7 +200,8 @@ public class Segment {
             measure, measure,
             predicates,
             excludedRegions,
-            compoundPredicateList);
+            compoundPredicateList,
+            volaCompoundPredicateList);
     }
 
     public static Segment create(
@@ -194,7 +212,8 @@ public class Segment {
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
         List<ExcludedRegion> excludedRegions,
-        final List<StarPredicate> compoundPredicateList)
+        final List<StarPredicate> compoundPredicateList,
+        final List<StarPredicate> volaCompoundPredicateList)
     {
         if (starConverter != null) {
             return new Segment(
@@ -206,7 +225,8 @@ public class Segment {
                 starConverter.convertMeasure(measure),
                 predicates,
                 Collections.<ExcludedRegion>emptyList(),
-                starConverter.convertPredicateList(compoundPredicateList));
+                starConverter.convertPredicateList(compoundPredicateList),
+                starConverter.convertPredicateList(volaCompoundPredicateList));
         } else {
             return new Segment(
                 star,
@@ -215,7 +235,8 @@ public class Segment {
                 measure,
                 predicates,
                 excludedRegions,
-                compoundPredicateList);
+                compoundPredicateList,
+                volaCompoundPredicateList);
         }
     }
 
@@ -233,6 +254,13 @@ public class Segment {
         return star;
     }
 
+    /**
+     * Returns the measure.
+     */
+    public RolapStar.Measure getMeasure() {
+        return measure;
+    }
+    
     /**
      * Returns the list of compound predicates.
      */
@@ -357,25 +385,18 @@ public class Segment {
     }
 
     public boolean matches(
-        AggregationKey aggregationKey,
-        RolapStar.Measure measure)
+        AggregationKey aggregationKey)
     {
         // Perform high-selectivity comparisons first.
         return aggregationKeyHashCode == aggregationKey.hashCode()
-            && this.measure == measure
-            && matchesInternal(aggregationKey);
-    }
-
-    private boolean matchesInternal(AggregationKey aggKey) {
-        return
-            constrainedColumnsBitKey.equals(
-                aggKey.getConstrainedColumnsBitKey())
-            && star.equals(aggKey.getStar())
             && AggregationKey.equal(
-                compoundPredicateList,
-                aggKey.compoundPredicateList);
+                    volaCompoundPredicateList,
+                    aggregationKey.volaCompoundPredicateList);
     }
 
+
+    
+    
     /**
      * Definition of a region of values which are not in a segment.
      */

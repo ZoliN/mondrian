@@ -117,7 +117,8 @@ public class SegmentBuilder {
         BitKey constrainedColumnsBitKey,
         RolapStar.Column[] constrainedColumns,
         RolapStar.Measure measure,
-        List<StarPredicate> compoundPredicates)
+        List<StarPredicate> compoundPredicates,
+        List<StarPredicate> volaCompoundPredicates)
     {
         final List<StarColumnPredicate> predicateList =
             new ArrayList<StarColumnPredicate>();
@@ -169,7 +170,8 @@ public class SegmentBuilder {
             predicateList.toArray(
                 new StarColumnPredicate[predicateList.size()]),
             new ExcludedRegionList(header),
-            compoundPredicates);
+            compoundPredicates,
+            volaCompoundPredicates);
     }
 
     private static List<Comparable> getColumnValsAtCellKey(
@@ -835,7 +837,8 @@ public class SegmentBuilder {
                         key.getStar(),
                         header.getConstrainedColumnsBitKey()),
                     request.getMeasure(),
-                    key.getCompoundPredicateList());
+                    key.getCompoundPredicateList(),
+                    key.getVolaCompoundPredicateList());
             return addData(segment, body);
         }
     }
@@ -847,13 +850,16 @@ public class SegmentBuilder {
     public static class StarSegmentConverter implements SegmentConverter {
         private final RolapStar.Measure measure;
         private final List<StarPredicate> compoundPredicateList;
+        private final List<StarPredicate> volaCompoundPredicateList;
 
         public StarSegmentConverter(
             RolapStar.Measure measure,
-            List<StarPredicate> compoundPredicateList)
+            List<StarPredicate> compoundPredicateList,
+            List<StarPredicate> volaCompoundPredicateList)
         {
             this.measure = measure;
             this.compoundPredicateList = compoundPredicateList;
+            this.volaCompoundPredicateList = volaCompoundPredicateList;
         }
 
         public SegmentWithData convert(
@@ -869,7 +875,8 @@ public class SegmentBuilder {
                         measure.getStar(),
                         header.getConstrainedColumnsBitKey()),
                     measure,
-                    compoundPredicateList);
+                    compoundPredicateList,
+                    volaCompoundPredicateList);
             return addData(segment, body);
         }
     }

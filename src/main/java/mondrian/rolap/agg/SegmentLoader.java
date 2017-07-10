@@ -101,6 +101,7 @@ public class SegmentLoader {
         int cellRequestCount,
         List<GroupingSet> groupingSets,
         List<StarPredicate> compoundPredicateList,
+        List<StarPredicate> volaCompoundPredicateList,
         List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
     {
         if (!MondrianProperties.instance().DisableCaching.get()) {
@@ -112,7 +113,8 @@ public class SegmentLoader {
                         segment.getHeader(),
                         new SegmentBuilder.StarSegmentConverter(
                             segment.measure,
-                            compoundPredicateList),
+                            compoundPredicateList,
+                            volaCompoundPredicateList),
                         true);
                     // Make sure that we are registered as a client of
                     // the segment by invoking getFuture.

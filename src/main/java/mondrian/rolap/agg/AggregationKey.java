@@ -56,6 +56,9 @@ public class AggregationKey
      * and speeds up comparison.
      */
     final List<StarPredicate> compoundPredicateList;
+    
+    final List<StarPredicate> volaCompoundPredicateList;
+    
 
     private int hashCode;
 
@@ -65,11 +68,13 @@ public class AggregationKey
     public AggregationKey(
         BitKey constrainedColumnsBitKey,
         RolapStar star,
-        List<StarPredicate> compoundPredicateList)
+        List<StarPredicate> compoundPredicateList,
+        List<StarPredicate> volaCompoundPredicateList)
     {
         this.constrainedColumnsBitKey = constrainedColumnsBitKey;
         this.star = star;
         this.compoundPredicateList = compoundPredicateList;
+        this.volaCompoundPredicateList = volaCompoundPredicateList == null ? Collections.<StarPredicate>emptyList() : volaCompoundPredicateList;
     }
 
     /**
@@ -80,12 +85,17 @@ public class AggregationKey
     public static AggregationKey create(CellRequest request) {
         Map<BitKey, StarPredicate> compoundPredicateMap =
             request.getCompoundPredicateMap();
+        Map<BitKey, StarPredicate> volaCompoundPredicateMap =
+            request.getVolaCompoundPredicateMap();
         return new AggregationKey(
             request.getConstrainedColumnsBitKey(),
             request.getMeasure().getStar(),
             compoundPredicateMap == null
                 ? Collections.<StarPredicate>emptyList()
-                : new ArrayList<StarPredicate>(compoundPredicateMap.values()));
+                : new ArrayList<StarPredicate>(compoundPredicateMap.values()),
+            volaCompoundPredicateMap == null
+                ? null
+                : new ArrayList<StarPredicate>(volaCompoundPredicateMap.values()));
     }
 
     public final int computeHashCode() {
@@ -202,7 +212,15 @@ public class AggregationKey
     public List<StarPredicate> getCompoundPredicateList() {
         return compoundPredicateList;
     }
-
+    
+    /**
+     * Returns the list of volatile compound predicates.
+     *
+     * @return list of predicates
+     */
+    public List<StarPredicate> getVolaCompoundPredicateList() {
+        return volaCompoundPredicateList;
+    }
 }
 
 // End AggregationKey.java

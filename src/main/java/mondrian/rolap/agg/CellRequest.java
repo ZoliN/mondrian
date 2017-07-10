@@ -125,6 +125,10 @@ public class CellRequest {
      */
     private List<String> compoundPredicateStrings = null;
     
+    private SortedMap<BitKey, StarPredicate> volaCompoundPredicateMap = null;
+    
+    private boolean noVolaCompoundPredicateAdded;
+    
     /**
      * Whether the request is impossible to satisfy. This is set to 'true' if
      * contradictory constraints are applied to the same column. For example,
@@ -220,25 +224,47 @@ public class CellRequest {
      *
      * @param compoundBitKey Compound bit key
      * @param compoundPredicate Compound predicate
+     * @param predicateString Compound predicate string
      */
-    public void addAggregateList(
+    public void addVolaCompoundPredicate(
         BitKey compoundBitKey,
-        StarPredicate compoundPredicate)
+        StarPredicate compoundPredicate,
+        String predicateString)
     {
         if (compoundPredicateMap == null) {
             compoundPredicateMap = new TreeMap<BitKey, StarPredicate>();
+            compoundPredicateStrings = new ArrayList<String>();
+        } else if (noVolaCompoundPredicateAdded) {
+            //must recreate non volatile compound predicates for every request
+            compoundPredicateMap = new TreeMap<BitKey, StarPredicate>(compoundPredicateMap);
+            compoundPredicateStrings = new ArrayList<String>(compoundPredicateStrings);
+            noVolaCompoundPredicateAdded = false;
         }
         compoundPredicateMap.put(compoundBitKey, compoundPredicate);
+        int i = 0;
+        for (StarPredicate predicate : compoundPredicateMap.values()) {
+            if (predicate == compoundPredicate) {
+                compoundPredicateStrings.add(i, predicateString);
+            }
+            i++;
+        }
+
+        if (volaCompoundPredicateMap == null) {
+            volaCompoundPredicateMap = new TreeMap<BitKey, StarPredicate>();
+        }
+        volaCompoundPredicateMap.put(compoundBitKey, compoundPredicate);
+
     }
 
-    public void addPredicateString(
-        String predicateString)
+    public void setNonVolaCompoundPredicates(
+            SortedMap<BitKey, StarPredicate> compoundPredicateMap,
+            List<String> compoundPredicateStrings)
     {
-        if (compoundPredicateStrings == null) {
-            compoundPredicateStrings = new ArrayList<String>();
-        }
-        compoundPredicateStrings.add(predicateString);
+        this.compoundPredicateMap = compoundPredicateMap;
+        this.compoundPredicateStrings = compoundPredicateStrings;
+        noVolaCompoundPredicateAdded = true;
     }
+
     
     /**
      * Returns the measure of this cell request.
@@ -279,7 +305,11 @@ public class CellRequest {
     SortedMap<BitKey, StarPredicate> getCompoundPredicateMap() {
         return compoundPredicateMap;
     }
-
+    
+    public SortedMap<BitKey, StarPredicate> getVolaCompoundPredicateMap() {
+        return volaCompoundPredicateMap;
+    }
+    
     public List<String> getCompoundPredicateStrings() {
         if (compoundPredicateStrings != null) {
             return Collections.unmodifiableList(compoundPredicateStrings);

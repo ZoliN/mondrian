@@ -95,8 +95,11 @@ public class RolapEvaluator implements Evaluator {
     protected final List<List<List<Member>>> aggregationLists;
     
     protected CompoundPredicateInfo slicerPredicateInfo;
-    protected HashMap<RolapMeasureGroup,List<CompoundPredicateInfo>> subQueryPredicateInfoMap = new HashMap<RolapMeasureGroup,List<CompoundPredicateInfo>>();
+    protected HashMap<RolapMeasureGroup,HashMap<StarPredicate,CompoundPredicateInfo>> subQueryPredicateInfoMap = new HashMap<RolapMeasureGroup,HashMap<StarPredicate,CompoundPredicateInfo>>();
+    protected HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>> subQueryPredicatesForRequest = new HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>>();
 
+    
+    
     private final List<RolapMember> slicerMembers;
     
     private TupleList slicerTuples;
@@ -121,12 +124,13 @@ public class RolapEvaluator implements Evaluator {
         return slicerPredicateInfo;
     }
     
-    public List<CompoundPredicateInfo> getSubQueryPredicateInfo(RolapStoredMeasure measure) {
-        List<CompoundPredicateInfo> predicateInfos = subQueryPredicateInfoMap.get(measure.getMeasureGroup());
+    private HashMap<StarPredicate,CompoundPredicateInfo> getSubQueryPredicateInfo(RolapStoredMeasure measure) {
+        HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = subQueryPredicateInfoMap.get(measure.getMeasureGroup());
         if ( predicateInfos == null ) {
-            predicateInfos = new ArrayList<CompoundPredicateInfo>();
+            predicateInfos = new HashMap<StarPredicate,CompoundPredicateInfo>();
             for (TupleList tupleList : subQueryTuples) {
-                predicateInfos.add(new CompoundPredicateInfo(tupleList, measure , this));
+                CompoundPredicateInfo cpi = new CompoundPredicateInfo(tupleList, measure , this);
+                predicateInfos.put(cpi.getPredicate(),cpi);
             }
             subQueryPredicateInfoMap.put(measure.getMeasureGroup(),predicateInfos);
         }
@@ -134,7 +138,29 @@ public class RolapEvaluator implements Evaluator {
         return predicateInfos;
     }
 
-
+    public Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> getSubQueryCompoundPredicates(RolapStoredMeasure measure) {
+        Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> compoundPredicates = subQueryPredicatesForRequest.get(measure.getMeasureGroup());
+        if ( compoundPredicates == null ) {
+            compoundPredicates = Pair.of(new TreeMap<BitKey, StarPredicate>(),new ArrayList<String>());
+            HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = getSubQueryPredicateInfo(measure);
+            for (CompoundPredicateInfo predicateInfo : predicateInfos.values()) {
+                if (!predicateInfo.isSatisfiable()) {
+                    return null;
+                }
+                if (predicateInfo.getPredicate() != null) {
+                    compoundPredicates.left.put(
+                        predicateInfo.getBitKey(), predicateInfo.getPredicate());
+                }
+            }
+            for (StarPredicate predicate : compoundPredicates.left.values()) {
+                compoundPredicates.right.add(
+                        predicateInfos.get(predicate).getPredicateString());
+            }
+            subQueryPredicatesForRequest.put(measure.getMeasureGroup(), compoundPredicates);
+        }
+        return compoundPredicates;
+    }
+    
     /**
      * States of the finite state machine for determining the max solve order
      * for the "scoped" behavior.
