@@ -558,6 +558,10 @@ public class RolapResult extends ResultBase {
         final List<List<Member>> emptyNonAllMembers =
             Collections.emptyList();
         
+        
+        boolean[] simpleEval = simpleCrossJoinSubQueryEval(query, evaluator);        
+         
+
         /////////////////////////////////////////////////////////////////
         // Determine Axes
         //
@@ -566,6 +570,7 @@ public class RolapResult extends ResultBase {
 
 
         for (int i = 0; i < query.axes.length; i++) {
+            if (simpleEval[i]) continue;
             final QueryAxis axis = query.axes[i];
             final Calc calc = query.axisCalcs[i];
             loadMembers(emptyNonAllMembers, evaluator, axis, calc, axisMembers);
@@ -598,6 +603,7 @@ public class RolapResult extends ResultBase {
                     evaluator.restore(savepoint);
                     redo = false;
                     for (int i = 0; i < query.axes.length; i++) {
+                        if (simpleEval[i]) continue;
                         QueryAxis axis = query.axes[i];
                         final Calc calc = query.axisCalcs[i];
                         tupleIterable[i] = evalExecute(nonAllMembers, nonAllMembers.size() - 1, evaluator,
@@ -632,8 +638,8 @@ public class RolapResult extends ResultBase {
         evaluator.restore(savepoint);
         
         for (int i = 0; i < query.axes.length; i++) {
+            if (simpleEval[i]) continue;
             if (tupleIterable[i]!=null) {
-                 
                 TupleList tuples =
                     AggregateFunDef.AggregateCalc.optimizeTupleList(
                         evaluator,
@@ -645,6 +651,73 @@ public class RolapResult extends ResultBase {
         
         return; 
         
+    }
+
+
+
+    private boolean[] simpleCrossJoinSubQueryEval(Query query, RolapEvaluator evaluator) {
+        boolean[] success = new boolean[query.axes.length];
+        for (int i = 0; i < query.axes.length; i++) {
+            success[i]=false;
+            final Exp exp = query.axes[i].getSet();
+            if (!(exp instanceof ResolvedFunCall)) continue;
+            ResolvedFunCall funCall=(ResolvedFunCall)query.axes[i].getSet();
+            if (!funCall.getFunName().equals("()") && !funCall.getFunName().equalsIgnoreCase("CrossJoin")) continue;
+            if (funCall.getArgCount() < 2) continue;
+            boolean onlySets = true;
+            boolean onlyNonCalcMembers = true;
+            for (Exp exp2 : funCall.getArgs()) {
+                if (!(exp2 instanceof ResolvedFunCall)) {
+                    onlySets = false;
+                    break; 
+                }
+                ResolvedFunCall funCall2=(ResolvedFunCall)exp2;
+                if (!funCall2.getFunName().equals("{}") ) {
+                    onlySets = false;
+                    break; 
+                }
+                if (funCall2.getArgCount() < 1) {
+                    onlySets = false;
+                    break;
+                }
+                onlyNonCalcMembers = true;
+                for (Exp exp3 : funCall2.getArgs()) {
+                    if (!(exp3 instanceof MemberExpr)) {
+                        onlyNonCalcMembers = false;
+                        break; 
+                    }
+                    RolapMember member = (RolapMember) ((MemberExpr) exp3).getMember();
+                    if (member.isCalculated()) {
+                        onlyNonCalcMembers = false;
+                        break;  
+                    }
+
+                }
+                if (!onlyNonCalcMembers) break; 
+            }
+            if (!onlySets || !onlyNonCalcMembers) continue;
+
+            for (Exp exp2 : funCall.getArgs()) {
+                ResolvedFunCall funCall2=(ResolvedFunCall)exp2;
+                TupleList tuples = TupleCollections.createList(1);
+                for (Exp exp3 : funCall2.getArgs()) {
+                    Member member = (Member) ((MemberExpr) exp3).getMember();
+                    List<Member> lst = new ArrayList<Member>(1);
+                    lst.add(member);
+                    tuples.add(lst);
+                }
+                tuples =
+                        AggregateFunDef.AggregateCalc.optimizeTupleList(
+                            evaluator,
+                            tuples, 
+                            false);
+                    evaluator.addSubQueryTuples(tuples);
+                
+            }        
+
+            success[i]=true;
+        }
+        return success;
     }
     
 
