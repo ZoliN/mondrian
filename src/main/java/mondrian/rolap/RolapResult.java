@@ -645,7 +645,7 @@ public class RolapResult extends ResultBase {
                         evaluator,
                         TupleCollections.materialize(tupleIterable[i], false),
                         false);
-                evaluator.addSubQueryTuples(tuples);
+                evaluator.addSubQueryTuples(FunUtil.hierarchizeTupleList(tuples, false));
             }
         }
         
@@ -711,7 +711,7 @@ public class RolapResult extends ResultBase {
                             evaluator,
                             tuples, 
                             false);
-                    evaluator.addSubQueryTuples(tuples);
+                evaluator.addSubQueryTuples(FunUtil.hierarchizeTupleList(tuples, false));
                 
             }        
 
