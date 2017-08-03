@@ -46,6 +46,10 @@ public class MicrosoftSqlServerDialect extends JdbcDialectImpl {
             columnNames, columnTypes, valueList, null, false);
     }
 
+    public boolean supportsGroupingSets() {
+        return true;
+    }
+    
     @Override
     public boolean requiresAliasForFromQuery() {
         return true;
