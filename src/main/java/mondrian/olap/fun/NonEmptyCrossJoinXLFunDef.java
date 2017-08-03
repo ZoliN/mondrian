@@ -11,11 +11,21 @@
 */
 package mondrian.olap.fun;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 import mondrian.calc.*;
 import mondrian.calc.impl.AbstractListCalc;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
+import mondrian.rolap.RolapCubeLevel;
 import mondrian.rolap.RolapEvaluator;
+import mondrian.rolap.RolapMeasureGroup;
+import mondrian.rolap.RolapMember;
+import mondrian.rolap.RolapStar;
+import mondrian.rolap.RolapStoredMeasure;
 
 
 /**
@@ -86,8 +96,72 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                         return list1;
                     }
                     final TupleList list2 = listCalc2.evaluateList(evaluator);
-                    TupleList result = mutableCrossJoinXL(list1, list2);
+                    TupleList result = null;
+                    boolean optimizationPossible;
+                    if (((RolapEvaluator)evaluator).isPreEvaluation()) {
+                        while (true) {
+                            int arity = list1.getArity() + list2.getArity();
+                            result = TupleCollections.createList(arity);
+                            List<Member> firstTuple = new ArrayList<Member>(arity);
+                            for (int i = 0; i < list1.getArity(); i++) {
+                                Member m = list1.get(0).get(i);
+                                if (!m.isAll()) {
+                                    firstTuple.add(m);
+                                } else {
+                                    Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
+                                    firstTuple.add(firstChild);
+                                }
+                            }
+                            for (int i = 0; i < list2.getArity(); i++) {
+                                Member m = list2.get(0).get(i);
+                                if (!m.isAll()) {
+                                    firstTuple.add(m);
+                                } else {
+                                    Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
+                                    firstTuple.add(firstChild);
+                                }
+                            }
+                            result.add(firstTuple);
+                            
+                            final RolapStoredMeasure measure;
+                            Member[] members = evaluator.getNonAllMembers();
+                            if (members.length > 0 && members[0] instanceof RolapStoredMeasure) {
+                                measure = (RolapStoredMeasure) members[0];
+                            } else {
+                                optimizationPossible = false;
+                                break;
+                            }
+                            final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
+                            Set<RolapStar.Column> preEvalOptimizedColumns = new HashSet<RolapStar.Column>();
+                            for (Member member : firstTuple) {
+                                final RolapMember rmember = (RolapMember) member;
+                                final RolapCubeLevel level = rmember.getLevel();
+                                final List<RolapStar.Column> starColumns = level.getLevelReader().getStarKeyColumns(rmember,
+                                        measureGroup);
+                                preEvalOptimizedColumns.addAll(starColumns);
+                            }
+                            for (int i = 0; i < arity; i++) {
+                                List<Member> tuple = new ArrayList<Member>(arity);
+                                for (int j = 0; j < arity - i - 1; j++) {
+                                    tuple.add(firstTuple.get(j));
+                                }
+                                for (int j = arity - i - 1; j < arity; j++) {
+                                    tuple.add(evaluator.getSchemaReader()
+                                            .getHierarchyRootMembers(firstTuple.get(j).getHierarchy()).get(0));
 
+                                }
+                                result.add(tuple);
+                            }
+                            ((RolapEvaluator) evaluator).setPreEvalOptimizedColumns(preEvalOptimizedColumns);
+                            optimizationPossible = true;
+                            break;
+                        }
+                    }
+                    else {
+                        optimizationPossible = false;
+                    }
+                    if (!optimizationPossible) result = mutableCrossJoinXL(list1, list2);
+                    
                     // remove any remaining empty crossings from the result
                     result = nonEmptyList(evaluator, result, call, ctag);
                     return result;

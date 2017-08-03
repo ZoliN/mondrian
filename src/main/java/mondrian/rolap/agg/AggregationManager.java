@@ -104,7 +104,8 @@ public class AggregationManager extends RolapAggregationManager {
         AggregationKey aggregationKey,
         StarColumnPredicate[] predicates,
         GroupingSetsCollector groupingSetsCollector,
-        List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
+        List<Future<Map<Segment, SegmentWithData>>> segmentFutures,
+        Set<RolapStar.Column> preEvalOptimizedColumns)
     {
         RolapStar star = measures.get(0).getStar();
         Aggregation aggregation =
@@ -112,7 +113,7 @@ public class AggregationManager extends RolapAggregationManager {
 
         // try to eliminate unnecessary constraints
         // for Oracle: prevent an IN-clause with more than 1000 elements
-        predicates = aggregation.optimizePredicates(columns, predicates);
+        predicates = aggregation.optimizePredicates(columns, predicates, preEvalOptimizedColumns);
         aggregation.load(
             cacheMgr, cellRequestCount, columns, measures, predicates,
             starConverter, groupingSetsCollector, segmentFutures);

@@ -3676,7 +3676,14 @@ public class FunUtil extends Util {
                 // has been loaded.
                 // Return an empty list short circuits higher level
                 // evaluation poping one all the way to the top.
-                return TupleCollections.emptyList(list.getArity());
+                if (((RolapEvaluator)evaluator).isPreEvaluation()) 
+                {
+                    TupleList result = TupleCollections.createList(list.getArity());
+                    result.add(list.get(0));
+                    return result;
+                } else {
+                    return TupleCollections.emptyList(list.getArity());
+                }
             }
         }
         return list;

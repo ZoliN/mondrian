@@ -109,6 +109,36 @@ public class RolapEvaluator implements Evaluator {
     private RolapMember[] nonAllMembers;
     private int commandCount;
     private Object[] commands;
+    
+    private boolean preEvaluation;
+
+    public boolean isPreEvaluation() {
+        return preEvaluation;
+    }
+
+    public void setPreEvaluation(boolean preEvaluation) {
+        this.preEvaluation = preEvaluation;
+    }
+
+    /*private boolean preEvalOptiApplied;
+
+    public boolean getPreEvalOptiApplied() {
+        return preEvalOptiApplied;
+    }
+
+    public void setPreEvalOptiApplied(boolean preEvalOptiApplied) {
+        this.preEvalOptiApplied = preEvalOptiApplied;
+    }*/
+    
+    private Set<RolapStar.Column> preEvalOptimizedColumns;
+    
+    public Set<RolapStar.Column> getPreEvalOptimizedColumns() {
+        return preEvalOptimizedColumns;
+    }
+
+    public void setPreEvalOptimizedColumns(Set<RolapStar.Column> preEvalOptimizedColumns) {
+        this.preEvalOptimizedColumns = preEvalOptimizedColumns;
+    }
 
     /**
      * Set of expressions actively being expanded. Prevents infinite cycle of

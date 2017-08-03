@@ -208,7 +208,8 @@ public class Aggregation {
      */
     public StarColumnPredicate[] optimizePredicates(
         RolapStar.Column[] columns,
-        StarColumnPredicate[] predicates)
+        StarColumnPredicate[] predicates,
+        Set<RolapStar.Column> preEvalOptimizedColumns)
     {
         if (predicates.length == 0) {
             return predicates;
@@ -216,164 +217,180 @@ public class Aggregation {
         RolapStar star = getStar();
         assert predicates.length == columns.length;
         StarColumnPredicate[] newPredicates = predicates.clone();
-        double[] bloats = new double[columns.length];
         final RolapSchema.PhysRouter router = predicates[0].getColumn().router;
-
-        // We want to handle the special case "drilldown" which occurs pretty
-        // often. Here, the parent is here as a constraint with a single member
-        // and the list of children as well.
-        List<Member> potentialParents = new ArrayList<Member>();
-        for (final StarColumnPredicate predicate : predicates) {
-            Member m;
-            if (predicate instanceof MemberColumnPredicate) {
-                m = ((MemberColumnPredicate) predicate).getMember();
-                potentialParents.add(m);
-            }
-        }
-
-        for (int i = 0; i < newPredicates.length; i++) {
-            // A set of constraints with only one entry will not be optimized
-            // away
-            if (!(newPredicates[i] instanceof ListColumnPredicate)) {
-                bloats[i] = 0.0;
-                continue;
+        
+        if (preEvalOptimizedColumns != null) {
+           for (int i = 0; i < newPredicates.length; i++) {
+               if (preEvalOptimizedColumns.contains(columns[i])) {
+                   newPredicates[i] =
+                            Predicates.wildcard(
+                                new PredicateColumn(
+                                    router,
+                                    columns[i].getExpression()),
+                                true);
+               }
             }
 
-            final ListColumnPredicate newPredicate =
-                (ListColumnPredicate) newPredicates[i];
-            final List<StarColumnPredicate> predicateList =
-                newPredicate.getPredicates();
-            final int valueCount = predicateList.size();
-            if (valueCount < 2) {
-                bloats[i] = 0.0;
-                continue;
-            }
-
-            if (valueCount > maxConstraints) {
-                // Some databases can handle only a limited number of elements
-                // in 'WHERE IN (...)'. This set is greater than this database
-                // can handle, so we drop this constraint. Hopefully there are
-                // other constraints that will limit the result.
-                bloats[i] = 1.0; // will be optimized away
-                continue;
-            }
-
-            // more than one - check for children of same parent
-            double constraintLength = valueCount;
-            Member parent = null;
-            Level level = null;
-            for (int j = 0; j < valueCount; j++) {
-                Object value = predicateList.get(j);
-                if (value instanceof MemberColumnPredicate) {
-                    MemberColumnPredicate memberColumnPredicate =
-                        (MemberColumnPredicate) value;
-                    Member m = memberColumnPredicate.getMember();
-                    if (j == 0) {
-                        parent = m.getParentMember();
-                        level = m.getLevel();
-                    } else {
-                        if (parent != null
-                            && !parent.equals(m.getParentMember()))
-                        {
-                            parent = null; // no common parent
-                        }
-                        if (level != null
-                            && !level.equals(m.getLevel()))
-                        {
-                            // should never occur, constraints are of same level
-                            level = null;
-                        }
-                    }
-                } else {
-                    // Value constraint with no associated member.
-                    // Compute bloat by #constraints / column cardinality.
-                    parent = null;
-                    level = null;
-                    bloats[i] = constraintLength / columns[i].getCardinality();
-                    break;
+        } else {
+            double[] bloats = new double[columns.length];
+            
+    
+            // We want to handle the special case "drilldown" which occurs pretty
+            // often. Here, the parent is here as a constraint with a single member
+            // and the list of children as well.
+            List<Member> potentialParents = new ArrayList<Member>();
+            for (final StarColumnPredicate predicate : predicates) {
+                Member m;
+                if (predicate instanceof MemberColumnPredicate) {
+                    m = ((MemberColumnPredicate) predicate).getMember();
+                    potentialParents.add(m);
                 }
             }
-            boolean done = false;
-            if (parent != null) {
-                // common parent exists
-                if (parent.isAll() || potentialParents.contains(parent)) {
-                    // common parent is there as constraint
-                    //  if the children are complete, this constraint set is
-                    //  unneccessary try to get the children directly from
-                    //  cache for the drilldown case, the children will be
-                    //  in the cache
-                    // - if not, forget this optimization.
-                    SchemaReader scr = star.getSchema().getSchemaReader();
-                    int childCount = scr.getChildrenCountFromCache(parent);
-                    if (childCount == -1) {
-                        // nothing gotten from cache
-                        if (!parent.isAll()) {
-                            // parent is in constraints
-                            // no information about children cardinality
-                            //  constraints must not be optimized away
-                            bloats[i] = 0.0;
-                            done = true;
+    
+            for (int i = 0; i < newPredicates.length; i++) {
+                // A set of constraints with only one entry will not be optimized
+                // away
+                if (!(newPredicates[i] instanceof ListColumnPredicate)) {
+                    bloats[i] = 0.0;
+                    continue;
+                }
+    
+                final ListColumnPredicate newPredicate =
+                    (ListColumnPredicate) newPredicates[i];
+                final List<StarColumnPredicate> predicateList =
+                    newPredicate.getPredicates();
+                final int valueCount = predicateList.size();
+                if (valueCount < 2) {
+                    bloats[i] = 0.0;
+                    continue;
+                }
+    
+                if (valueCount > maxConstraints) {
+                    // Some databases can handle only a limited number of elements
+                    // in 'WHERE IN (...)'. This set is greater than this database
+                    // can handle, so we drop this constraint. Hopefully there are
+                    // other constraints that will limit the result.
+                    bloats[i] = 1.0; // will be optimized away
+                    continue;
+                }
+    
+                // more than one - check for children of same parent
+                double constraintLength = valueCount;
+                Member parent = null;
+                Level level = null;
+                for (int j = 0; j < valueCount; j++) {
+                    Object value = predicateList.get(j);
+                    if (value instanceof MemberColumnPredicate) {
+                        MemberColumnPredicate memberColumnPredicate =
+                            (MemberColumnPredicate) value;
+                        Member m = memberColumnPredicate.getMember();
+                        if (j == 0) {
+                            parent = m.getParentMember();
+                            level = m.getLevel();
+                        } else {
+                            if (parent != null
+                                && !parent.equals(m.getParentMember()))
+                            {
+                                parent = null; // no common parent
+                            }
+                            if (level != null
+                                && !level.equals(m.getLevel()))
+                            {
+                                // should never occur, constraints are of same level
+                                level = null;
+                            }
                         }
                     } else {
-                        bloats[i] = constraintLength / childCount;
+                        // Value constraint with no associated member.
+                        // Compute bloat by #constraints / column cardinality.
+                        parent = null;
+                        level = null;
+                        bloats[i] = constraintLength / columns[i].getCardinality();
+                        break;
+                    }
+                }
+                boolean done = false;
+                if (parent != null) {
+                    // common parent exists
+                    if (parent.isAll() || potentialParents.contains(parent)) {
+                        // common parent is there as constraint
+                        //  if the children are complete, this constraint set is
+                        //  unneccessary try to get the children directly from
+                        //  cache for the drilldown case, the children will be
+                        //  in the cache
+                        // - if not, forget this optimization.
+                        SchemaReader scr = star.getSchema().getSchemaReader();
+                        int childCount = scr.getChildrenCountFromCache(parent);
+                        if (childCount == -1) {
+                            // nothing gotten from cache
+                            if (!parent.isAll()) {
+                                // parent is in constraints
+                                // no information about children cardinality
+                                //  constraints must not be optimized away
+                                bloats[i] = 0.0;
+                                done = true;
+                            }
+                        } else {
+                            bloats[i] = constraintLength / childCount;
+                            done = true;
+                        }
+                    }
+                }
+    
+                if (!done && level != null) {
+                    // if the level members are cached, we do not need "count *"
+                    SchemaReader scr = star.getSchema().getSchemaReader();
+                    int memberCount = scr.getLevelCardinality(level, true, false);
+                    if (memberCount > 0) {
+                        bloats[i] = constraintLength / memberCount;
                         done = true;
                     }
                 }
+    
+                if (!done) {
+                    bloats[i] = constraintLength / columns[i].getCardinality();
+                }
             }
-
-            if (!done && level != null) {
-                // if the level members are cached, we do not need "count *"
-                SchemaReader scr = star.getSchema().getSchemaReader();
-                int memberCount = scr.getLevelCardinality(level, true, false);
-                if (memberCount > 0) {
-                    bloats[i] = constraintLength / memberCount;
-                    done = true;
+    
+            // build a list of constraints sorted by 'bloat factor'
+            ConstraintComparator comparator = new ConstraintComparator(bloats);
+            Integer[] indexes = new Integer[columns.length];
+            for (int i = 0; i < columns.length; i++) {
+                indexes[i] = i;
+            }
+    
+            // sort indexes by bloat descending
+            Arrays.sort(indexes, comparator);
+    
+            // Eliminate constraints one by one, until the constrained cell count
+            // became half of the unconstrained cell count. We can not have an
+            // absolute value here, because its
+            // very different if we fetch data for 2 years or 10 years (5 times
+            // more means 5 times slower). So a relative comparison is ok here
+            // but not an absolute one.
+    
+            double abloat = 1.0;
+            final double aBloatLimit = .5;
+    
+            for (int j : indexes) {
+                abloat = abloat * bloats[j];
+                if (abloat <= aBloatLimit) {
+                    break;
+                }
+                // eliminate this constraint
+                if (MondrianProperties.instance().OptimizePredicates.get()
+                    || bloats[j] == 1)
+                {
+                    newPredicates[j] =
+                        Predicates.wildcard(
+                            new PredicateColumn(
+                                router,
+                                columns[j].getExpression()),
+                            true);
                 }
             }
 
-            if (!done) {
-                bloats[i] = constraintLength / columns[i].getCardinality();
-            }
         }
-
-        // build a list of constraints sorted by 'bloat factor'
-        ConstraintComparator comparator = new ConstraintComparator(bloats);
-        Integer[] indexes = new Integer[columns.length];
-        for (int i = 0; i < columns.length; i++) {
-            indexes[i] = i;
-        }
-
-        // sort indexes by bloat descending
-        Arrays.sort(indexes, comparator);
-
-        // Eliminate constraints one by one, until the constrained cell count
-        // became half of the unconstrained cell count. We can not have an
-        // absolute value here, because its
-        // very different if we fetch data for 2 years or 10 years (5 times
-        // more means 5 times slower). So a relative comparison is ok here
-        // but not an absolute one.
-
-        double abloat = 1.0;
-        final double aBloatLimit = .5;
-
-        for (int j : indexes) {
-            abloat = abloat * bloats[j];
-            if (abloat <= aBloatLimit) {
-                break;
-            }
-            // eliminate this constraint
-            if (MondrianProperties.instance().OptimizePredicates.get()
-                || bloats[j] == 1)
-            {
-                newPredicates[j] =
-                    Predicates.wildcard(
-                        new PredicateColumn(
-                            router,
-                            columns[j].getExpression()),
-                        true);
-            }
-        }
-
         // Now do simple structural optimizations, e.g. convert a list predicate
         // with one element to a value predicate.
         for (int i = 0; i < newPredicates.length; i++) {

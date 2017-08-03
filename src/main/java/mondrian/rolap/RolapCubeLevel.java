@@ -100,7 +100,7 @@ public class RolapCubeLevel extends RolapLevel {
         }
     }
 
-    LevelReader getLevelReader() {
+    public LevelReader getLevelReader() {
         return levelReader;
     }
 
@@ -322,7 +322,7 @@ public class RolapCubeLevel extends RolapLevel {
      * constraints are generated. There are implementations for 'all' levels,
      * the 'null' level, parent-child levels and regular levels.
      */
-    interface LevelReader {
+    public interface LevelReader {
 
         /**
          * Adds constraints to a cell request for a member of this level.
@@ -349,6 +349,10 @@ public class RolapCubeLevel extends RolapLevel {
             StarPredicate predicate,
             RolapMeasureGroup measureGroup,
             RolapCacheRegion cacheRegion);
+        
+        List<RolapStar.Column> getStarKeyColumns(
+                RolapMember member,
+                RolapMeasureGroup measureGroup);
     }
 
     /**
@@ -502,6 +506,55 @@ public class RolapCubeLevel extends RolapLevel {
             // Unknown type of constraint.
             throw new UnsupportedOperationException();
         }
+        
+        public List<RolapStar.Column> getStarKeyColumns(
+                RolapMember member,
+                RolapMeasureGroup measureGroup) 
+        {
+            assert member.getLevel() == cubeLevel;
+            final List<Comparable> key = member.getKeyAsList();
+            if (key.isEmpty()) {
+                if (member == member.getHierarchy().getNullMember()) {
+                    // cannot form a request if one of the members is null
+                    return null;
+                } else if (member.isCalculated()) {
+                    return null;
+                } else {
+                    throw Util.newInternal("why is key empty?");
+                }
+            }
+
+            if (member.getDimension().hanger) {
+                return null;
+            }
+
+            List<RolapStar.Column> columnList = new ArrayList<RolapStar.Column>();
+            for (RolapSchema.PhysColumn column
+                : cubeLevel.attribute.getKeyList())
+            {
+                RolapStar.Column starColumn =
+                    measureGroup.getRolapStarColumn(
+                        cubeLevel.cubeDimension, column, false);
+                if (starColumn == null) {
+                    // This hierarchy is not one which qualifies the starMeasure
+                    // (this happens in virtual cubes). The starMeasure only has
+                    // a value for the 'all' member of the hierarchy (or for the
+                    // default member if the hierarchy has no 'all' member)
+                    return null;
+                }
+
+                if (member.isCalculated() && !member.isParentChildLeaf()) {
+                    return null;
+                } else {
+                    columnList.add(starColumn);
+                }
+
+                
+            }
+
+            // Request is satisfiable.
+            return columnList;    
+        }
     }
 
     /**
@@ -564,6 +617,13 @@ public class RolapCubeLevel extends RolapLevel {
         {
             throw new UnsupportedOperationException();
         }
+        
+        public List<RolapStar.Column> getStarKeyColumns(
+                RolapMember member,
+                RolapMeasureGroup measureGroup) 
+        {
+            return null;
+        }
     }
 
     /**
@@ -586,6 +646,13 @@ public class RolapCubeLevel extends RolapLevel {
         {
             // We don't need to apply any constraints.
         }
+        
+        public List<RolapStar.Column> getStarKeyColumns(
+                RolapMember member,
+                RolapMeasureGroup measureGroup) 
+        {
+            return null;
+        }
     }
 
     /**
@@ -605,6 +672,13 @@ public class RolapCubeLevel extends RolapLevel {
             RolapMeasureGroup measureGroup,
             RolapCacheRegion cacheRegion)
         {
+        }
+        
+        public List<RolapStar.Column> getStarKeyColumns(
+                RolapMember member,
+                RolapMeasureGroup measureGroup) 
+        {
+            return null;
         }
     }
 

@@ -134,7 +134,7 @@ public class FastBatchingCellReader implements CellReader {
         // synchronous request for the cell segment. If it is in the cache, it
         // will be worth the wait, because we can avoid the effort of batching
         // up requests that could have been satisfied by the same segment.
-        if (cacheEnabled && missCount == 0) {
+        if (cacheEnabled && missCount == 0 && evaluator.getPreEvalOptimizedColumns() == null) {
             SegmentWithData segmentWithData = cacheMgr.peek(request);
             if (segmentWithData != null) {
                 segmentWithData.getStar().register(segmentWithData);
@@ -221,7 +221,7 @@ public class FastBatchingCellReader implements CellReader {
      *
      * @return Whether any aggregations were loaded.
      */
-    boolean loadAggregations() {
+    boolean loadAggregations(Set<RolapStar.Column> preEvalOptimizedColumns) {
         if (!isDirty()) {
             return false;
         }
@@ -243,7 +243,8 @@ public class FastBatchingCellReader implements CellReader {
                         cacheMgr,
                         getDialect(),
                         cube,
-                        Collections.unmodifiableList(cellRequests1)));
+                        Collections.unmodifiableList(cellRequests1),
+                        preEvalOptimizedColumns));
 
             int failureCount = 0;
 
@@ -548,16 +549,20 @@ class BatchLoader {
     private final Map<List, SegmentBuilder.SegmentConverter> converterMap =
         new HashMap<List, SegmentBuilder.SegmentConverter>();
 
+    private final Set<RolapStar.Column> preEvalOptimizedColumns;
+    
     public BatchLoader(
         Locus locus,
         SegmentCacheManager cacheMgr,
         Dialect dialect,
-        RolapCube cube)
+        RolapCube cube,
+        Set<RolapStar.Column> preEvalOptimizedColumns)
     {
         this.locus = locus;
         this.cacheMgr = cacheMgr;
         this.dialect = dialect;
         this.cube = cube;
+        this.preEvalOptimizedColumns = preEvalOptimizedColumns;
     }
 
     final boolean shouldUseGroupingFunction() {
@@ -879,7 +884,7 @@ class BatchLoader {
 
         // Load batches in turn.
         for (Loadable loadable : loadableList) {
-            loadable.load(segmentMapFutures);
+            loadable.load(segmentMapFutures, preEvalOptimizedColumns);
         }
 
         if (LOGGER.isDebugEnabled()) {
@@ -901,17 +906,17 @@ class BatchLoader {
             futures);
     }
 
-    static List<Loadable> groupBatches(List<Batch> batchList) {
+    List<Loadable> groupBatches(List<Batch> batchList) {
         Map<AggregationKey, CompositeBatch> batchGroups =
             new HashMap<AggregationKey, CompositeBatch>();
         for (int i = 0; i < batchList.size(); i++) {
             for (int j = i + 1; j < batchList.size();) {
                 final Batch iBatch = batchList.get(i);
                 final Batch jBatch = batchList.get(j);
-                if (iBatch.canBatch(jBatch)) {
+                if (iBatch.canBatch(jBatch, preEvalOptimizedColumns)) {
                     batchList.remove(j);
                     addToCompositeBatch(batchGroups, iBatch, jBatch);
-                } else if (jBatch.canBatch(iBatch)) {
+                } else if (jBatch.canBatch(iBatch, preEvalOptimizedColumns)) {
                     batchList.set(i, jBatch);
                     batchList.remove(j);
                     addToCompositeBatch(batchGroups, jBatch, iBatch);
@@ -969,13 +974,15 @@ class BatchLoader {
         private final List<CellRequest> cellRequests;
         private final Map<String, Object> mdc =
             new HashMap<String, Object>();
+        private final Set<RolapStar.Column> preEvalOptimizedColumns;
 
         public LoadBatchCommand(
             Locus locus,
             SegmentCacheManager cacheMgr,
             Dialect dialect,
             RolapCube cube,
-            List<CellRequest> cellRequests)
+            List<CellRequest> cellRequests,
+            Set<RolapStar.Column> preEvalOptimizedColumns)
         {
             this.locus = locus;
             this.cacheMgr = cacheMgr;
@@ -985,6 +992,7 @@ class BatchLoader {
             if (MDC.getContext() != null) {
                 this.mdc.putAll(MDC.getContext());
             }
+            this.preEvalOptimizedColumns = preEvalOptimizedColumns;
         }
 
         public LoadBatchResponse call() {
@@ -993,7 +1001,7 @@ class BatchLoader {
                 old.clear();
                 old.putAll(mdc);
             }
-            return new BatchLoader(locus, cacheMgr, dialect, cube)
+            return new BatchLoader(locus, cacheMgr, dialect, cube, preEvalOptimizedColumns)
                 .load(cellRequests);
         }
 
@@ -1006,7 +1014,7 @@ class BatchLoader {
      * Superclass of {@link Batch} and {@link CompositeBatch}.
      */
     interface Loadable extends Comparable<Loadable> {
-        void load(List<Future<Map<Segment, SegmentWithData>>> segmentFutures);
+        void load(List<Future<Map<Segment, SegmentWithData>>> segmentFutures, Set<RolapStar.Column> preEvalOptimizedColumns);
 
         Batch getDetailedBatch();
     }
@@ -1043,15 +1051,15 @@ class BatchLoader {
         }
 
         public void load(
-            List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
+            List<Future<Map<Segment, SegmentWithData>>> segmentFutures, Set<RolapStar.Column> preEvalOptimizedColumns)
         {
             GroupingSetsCollector batchCollector =
                 new GroupingSetsCollector(true);
-            this.detailedBatch.loadAggregation(batchCollector, segmentFutures);
+            this.detailedBatch.loadAggregation(batchCollector, segmentFutures, preEvalOptimizedColumns);
 
             int cellRequestCount = 0;
             for (Batch batch : summaryBatches) {
-                batch.loadAggregation(batchCollector, segmentFutures);
+                batch.loadAggregation(batchCollector, segmentFutures, preEvalOptimizedColumns);
                 cellRequestCount += batch.cellRequestCount;
             }
 
@@ -1263,16 +1271,17 @@ class BatchLoader {
         }
 
         public final void load(
-            List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
+            List<Future<Map<Segment, SegmentWithData>>> segmentFutures, Set<RolapStar.Column> preEvalOptimizedColumns)
         {
             GroupingSetsCollector collectorWithGroupingSetsTurnedOff =
                 new GroupingSetsCollector(false);
-            loadAggregation(collectorWithGroupingSetsTurnedOff, segmentFutures);
+            loadAggregation(collectorWithGroupingSetsTurnedOff, segmentFutures, preEvalOptimizedColumns);
         }
 
         final void loadAggregation(
             GroupingSetsCollector groupingSetsCollector,
-            List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
+            List<Future<Map<Segment, SegmentWithData>>> segmentFutures,
+            Set<RolapStar.Column> preEvalOptimizedColumns)
         {
             if (MondrianProperties.instance().GenerateAggregateSql.get()) {
                 generateAggregateSql();
@@ -1325,7 +1334,8 @@ class BatchLoader {
                         batchKey,
                         predicates,
                         groupingSetsCollector,
-                        segmentFutures);
+                        segmentFutures,
+                        null);
                     measuresList.remove(measure);
                 }
             }
@@ -1341,7 +1351,8 @@ class BatchLoader {
                     batchKey,
                     predicates,
                     groupingSetsCollector,
-                    segmentFutures);
+                    segmentFutures,
+                    preEvalOptimizedColumns);
             }
 
             if (BATCH_LOGGER.isDebugEnabled()) {
@@ -1390,7 +1401,8 @@ class BatchLoader {
                     batchKey,
                     predicates,
                     groupingSetsCollector,
-                    segmentFutures);
+                    segmentFutures,
+                    null);
             }
         }
 
@@ -1542,9 +1554,9 @@ class BatchLoader {
          * <li>non matching columns of this batch have ALL VALUES
          * </ul>
          */
-        boolean canBatch(Batch other) {
+        boolean canBatch(Batch other, Set<RolapStar.Column> preEvalOptimizedColumns) {
             return hasOverlappingBitKeys(other)
-                && constraintsMatch(other)
+                && constraintsMatch(other, preEvalOptimizedColumns)
                 && hasSameMeasureList(other)
                 && !hasDistinctCountMeasure()
                 && !other.hasDistinctCountMeasure()
@@ -1559,23 +1571,23 @@ class BatchLoader {
          * @param other Other batch
          * @return Whether other batch can be subsumed into this one
          */
-        private boolean constraintsMatch(Batch other) {
+        private boolean constraintsMatch(Batch other, Set<RolapStar.Column> preEvalOptimizedColumns) {
             if (areBothDistinctCountBatches(other)) {
                 if (getConstrainedColumnsBitKey().equals(
                         other.getConstrainedColumnsBitKey()))
                 {
                     return hasSameCompoundPredicate(other)
-                        && haveSameValues(other);
+                        && haveSameValues(other, preEvalOptimizedColumns);
                 } else {
                     return hasSameCompoundPredicate(other)
                         || (other.batchKey.getCompoundPredicateList().isEmpty()
                             || equalConstraint(
                                 batchKey.getCompoundPredicateList(),
                                 other.batchKey.getCompoundPredicateList()))
-                        && haveSameValues(other);
+                        && haveSameValues(other, preEvalOptimizedColumns);
                 }
             } else {
-                return haveSameValues(other);
+                return haveSameValues(other, preEvalOptimizedColumns);
             }
         }
 
@@ -1699,7 +1711,7 @@ class BatchLoader {
          * has all children for others.
          */
         boolean haveSameValues(
-            Batch other)
+            Batch other, Set<RolapStar.Column> preEvalOptimizedColumns)
         {
             for (int j = 0; j < columns.length; j++) {
                 boolean isCommonColumn = false;
@@ -1714,7 +1726,7 @@ class BatchLoader {
                     }
                 }
                 if (!isCommonColumn
-                    && !hasAllValues(columns[j], valueSets[j]))
+                    && !hasAllValues(columns[j], valueSets[j]) && (preEvalOptimizedColumns==null || !preEvalOptimizedColumns.contains(columns[j]) ))
                 {
                     return false;
                 }

@@ -521,7 +521,7 @@ public class RolapResult extends ResultBase {
     
         
     void executeSubQuery(Query query,RolapEvaluator evaluator) {
-        System.out.println("Subquery: " + query.toString());
+        //System.out.println("Subquery: " + query.toString());
 
         if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
         
@@ -763,13 +763,17 @@ public class RolapResult extends ResultBase {
     }
 
     private boolean phase() {
+        return phase(null);
+    }
+    
+    private boolean phase(Set<RolapStar.Column> preEvalOptimizedColumns) {
         if (batchingReader.isDirty()) {
             execution.tracePhase(
                 batchingReader.getHitCount(),
                 batchingReader.getMissCount(),
                 batchingReader.getPendingCount());
 
-            return batchingReader.loadAggregations();
+            return batchingReader.loadAggregations(preEvalOptimizedColumns);
         } else {
             return false;
         }
@@ -859,8 +863,14 @@ public class RolapResult extends ResultBase {
         int attempt = 0;
         evaluator.setCellReader(batchingReader);
         while (true) {
+            ((RolapEvaluator)evaluator).setPreEvalOptimizedColumns(null);
             axisMembers.clearAxisCount();
             final int savepoint = evaluator.savepoint();
+            if (attempt == 0) {
+                evaluator.setPreEvaluation(true);
+            } else {
+                evaluator.setPreEvaluation(false);
+            }
             try {
                 evalLoad(
                     nonAllMembers,
@@ -878,7 +888,7 @@ public class RolapResult extends ResultBase {
                 evaluator.restore(savepoint);
             }
 
-            if (!phase()) {
+            if (!phase(((RolapEvaluator)evaluator).getPreEvalOptimizedColumns())) {
                 break;
             } else {
                 // Clear invalid expression result so that the next evaluation
@@ -893,6 +903,7 @@ public class RolapResult extends ResultBase {
                     + " passes; there's probably a cycle");
             }
         }
+        ((RolapEvaluator)evaluator).setPreEvalOptimizedColumns(null);
     }
 
     void evalLoad(
