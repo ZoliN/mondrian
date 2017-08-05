@@ -577,7 +577,8 @@ public class SqlQuery {
      * @param prefix Prefix for each line
      */
     public StringBuilder toBuffer(StringBuilder buf, String prefix) {
-        final String first = distinct ? "select distinct " : "select ";
+    	String rewrite = MondrianProperties.instance().UseRewriteHint.get() ? " /*+ rewrite */ " : "";
+        final String first = distinct ? "select" + rewrite + " distinct " : "select " + rewrite;
         select.toBuffer(buf, generateFormattedSql, prefix, first, ", ", "", "");
         groupingFunctionsToBuffer(buf, prefix);
         String fromSep = joinCount > 0 ? " join " : ", ";

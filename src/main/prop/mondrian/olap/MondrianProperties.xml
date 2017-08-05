@@ -633,6 +633,16 @@ pretty-print mode, formatted for ease of reading.</p>
         <Default>false</Default>
     </PropertyDefinition>
     <PropertyDefinition>
+        <Name>UseRewriteHint</Name>
+        <Path>mondrian.rolap.generate.oracle.rewrite</Path>
+        <Category>SQL generation</Category>
+        <Description>
+<p>Boolean property that controls rewrite hint.</p>
+        </Description>
+        <Type>boolean</Type>
+        <Default>false</Default>
+    </PropertyDefinition>
+    <PropertyDefinition>
         <Name>EnableNonEmptyOnAllAxis</Name>
         <Path>mondrian.rolap.nonempty</Path>
         <Description>
