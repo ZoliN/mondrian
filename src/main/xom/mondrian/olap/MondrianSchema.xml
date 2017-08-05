@@ -2226,6 +2226,14 @@ PARENT&#160;&#160;&#160;&#160;CHILD&#160;&#160;&#160;&#160;DISTANCE<br/>
                 Equivalent to a Key child containing a single Column.
             </Doc>
         </Attribute>
+		<Attribute name="approxRowCount" required="false">
+            <Doc>
+                The estimated number of rows in this table. Setting this property improves startup 
+				performance and prevents it from issuing 'select count(*)'
+                queries over table.
+            </Doc>
+        </Attribute>
+        
         <Array name="childArray" type="TableElement">
             <Doc>
                 Child elements of this Table.

@@ -1855,12 +1855,12 @@ public class RolapSchema extends OlapElementBase implements Schema {
                 throw Util.newError(
                     "Error while loading columns of table '" + name + "'");
             }
-
+            int approxRowCount = RolapSchemaLoader.loadApproxRowCount(((MondrianDef.Table)xmlNode).approxRowCount);
             rowCount =
                 physSchema.statistic.getRelationCardinality(
                     this,
                     alias,
-                    -1);
+                    approxRowCount);
 
             for (JdbcSchema.Table.Column jdbcColumn : jdbcTable.getColumns()) {
                 PhysColumn column =
