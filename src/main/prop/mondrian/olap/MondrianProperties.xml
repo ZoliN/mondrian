@@ -1456,4 +1456,15 @@ log4j.configuration=file:log4j.properties</code></blockquote>
         </Description>
         <Type>String</Type>
     </PropertyDefinition>
+    <PropertyDefinition>
+        <Name>TrustedQueryRewrite</Name>
+        <Path>mondrian.rolap.oracle.trustedrewrite</Path>
+        <Description>
+<p>Boolean that can enable trusted query rewrite integrity in oracle. Default: false.</p>
+        </Description>
+        <Type>boolean</Type>
+        <Default>false</Default>
+    </PropertyDefinition>
+
+    
 </PropertyDefinitions>

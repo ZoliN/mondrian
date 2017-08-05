@@ -198,7 +198,9 @@ public class SqlStatement implements DBStatement {
                     sql,
                     getPurpose(),
                     getCellRequestCount()));
-
+        	if (MondrianProperties.instance().TrustedQueryRewrite.get()) {
+        		statement.executeQuery("alter session set QUERY_REWRITE_INTEGRITY =trusted");
+        	}
             this.resultSet = statement.executeQuery(sql);
 
             // skip to first row specified in request
