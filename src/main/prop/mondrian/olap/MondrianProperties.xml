@@ -1465,6 +1465,15 @@ log4j.configuration=file:log4j.properties</code></blockquote>
         <Type>boolean</Type>
         <Default>false</Default>
     </PropertyDefinition>
+    <PropertyDefinition>
+        <Name>SqlFetchSize</Name>
+        <Path>mondrian.rolap.sql.fetchsize</Path>
+        <Description>
+<p>Integer to control sql statement fetch size. Default: use driver default.</p>
+        </Description>
+        <Type>int</Type>
+        <Default>-1</Default>
+    </PropertyDefinition>
 
     
 </PropertyDefinitions>

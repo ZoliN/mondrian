@@ -198,9 +198,15 @@ public class SqlStatement implements DBStatement {
                     sql,
                     getPurpose(),
                     getCellRequestCount()));
-        	if (MondrianProperties.instance().TrustedQueryRewrite.get()) {
+        	
+            if (MondrianProperties.instance().TrustedQueryRewrite.get()) {
         		statement.executeQuery("alter session set QUERY_REWRITE_INTEGRITY =trusted");
         	}
+        	int fetchsize = MondrianProperties.instance().SqlFetchSize.get();
+        	if (fetchsize > 0) {
+        		statement.setFetchSize(fetchsize);
+        	}
+            	
             this.resultSet = statement.executeQuery(sql);
 
             // skip to first row specified in request
