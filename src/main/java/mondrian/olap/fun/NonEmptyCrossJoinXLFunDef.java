@@ -20,6 +20,8 @@ import mondrian.calc.*;
 import mondrian.calc.impl.AbstractListCalc;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
+import mondrian.olap.fun.FunUtil.MeasureVisitor;
+import mondrian.rolap.PreEvalFailedException;
 import mondrian.rolap.RolapCubeLevel;
 import mondrian.rolap.RolapEvaluator;
 import mondrian.rolap.RolapMeasureGroup;
@@ -90,14 +92,12 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                             (TupleList) nativeEvaluator.execute(
                                 ResultStyle.LIST);
                     }
-
                     final TupleList list1 = listCalc1.evaluateList(evaluator);
                     if (list1.isEmpty()) {
                         return list1;
                     }
                     final TupleList list2 = listCalc2.evaluateList(evaluator);
                     TupleList result = null;
-                    boolean optimizationPossible;
                     if (((RolapEvaluator)evaluator).isPreEvaluation()) {
                         while (true) {
                             int arity = list1.getArity() + list2.getArity();
@@ -122,15 +122,34 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                                 }
                             }
                             result.add(firstTuple);
-                            
-                            final RolapStoredMeasure measure;
+                            //we need measure to get measuregroup which is needed to get starcolumn
+                            RolapStoredMeasure measure = null;
                             Member[] members = evaluator.getNonAllMembers();
                             if (members.length > 0 && members[0] instanceof RolapStoredMeasure) {
                                 measure = (RolapStoredMeasure) members[0];
                             } else {
-                                optimizationPossible = false;
-                                break;
+                                boolean storedMeasureFound = false;
+                                Set<Member> queryMeasureSet = evaluator.getQuery().getMeasuresMembers();
+                                Set<Member> measureSet = new HashSet<Member>();
+                                MeasureVisitor visitor = new MeasureVisitor(measureSet, call);
+                                for (Member m : queryMeasureSet) {
+                                    if (m.isCalculated()) {
+                                        Exp exp = m.getExpression();
+                                        exp.accept(visitor);
+                                    } else {
+                                        measureSet.add(m);
+                                    }
+                                    if (measureSet.size() > 0) {
+                                    	storedMeasureFound = true;
+                                    	measure = (RolapStoredMeasure)measureSet.iterator().next();
+                                    	break;
+                                    }
+                                }
+                                if (!storedMeasureFound) {
+                                	throw PreEvalFailedException.INSTANCE;
+                                }
                             }
+                            
                             final RolapMeasureGroup measureGroup = measure.getMeasureGroup();
                             Set<RolapStar.Column> preEvalOptimizedColumns = new HashSet<RolapStar.Column>();
                             for (Member member : firstTuple) {
@@ -153,14 +172,12 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                                 result.add(tuple);
                             }
                             ((RolapEvaluator) evaluator).setPreEvalOptimizedColumns(preEvalOptimizedColumns);
-                            optimizationPossible = true;
                             break;
                         }
                     }
                     else {
-                        optimizationPossible = false;
+                    	result = mutableCrossJoinXL(list1, list2);
                     }
-                    if (!optimizationPossible) result = mutableCrossJoinXL(list1, list2);
                     
                     // remove any remaining empty crossings from the result
                     result = nonEmptyList(evaluator, result, call, ctag);

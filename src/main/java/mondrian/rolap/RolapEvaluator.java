@@ -120,14 +120,14 @@ public class RolapEvaluator implements Evaluator {
         this.preEvaluation = preEvaluation;
     }
 
-    /*private boolean preEvalOptiApplied;
+    /*private boolean preEvalInsideCrossJoin;
 
-    public boolean getPreEvalOptiApplied() {
-        return preEvalOptiApplied;
+    public boolean isPreEvalInsideCrossJoin() {
+        return preEvalInsideCrossJoin;
     }
 
-    public void setPreEvalOptiApplied(boolean preEvalOptiApplied) {
-        this.preEvalOptiApplied = preEvalOptiApplied;
+    public void setPreEvalInsideCrossJoin(boolean preEvalInsideCrossJoin) {
+        this.preEvalInsideCrossJoin = preEvalInsideCrossJoin;
     }*/
     
     private Set<RolapStar.Column> preEvalOptimizedColumns;

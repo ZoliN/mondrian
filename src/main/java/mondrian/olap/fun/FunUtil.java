@@ -4082,7 +4082,7 @@ public class FunUtil extends Util {
      * the non empty crossjoin/drilldownmember etc function and populates the queryMeasureSet
      * with base measures
      */
-    private static class MeasureVisitor extends MdxVisitorImpl {
+    protected static class MeasureVisitor extends MdxVisitorImpl {
 
         private final Set<Member> queryMeasureSet;
         private final ResolvedFunCallFinder finder;

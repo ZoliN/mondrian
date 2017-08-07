@@ -884,6 +884,9 @@ public class RolapResult extends ResultBase {
                 // Decrement count because it wasn't a recursive formula that
                 // caused the iteration.
                 --attempt;
+            } catch (PreEvalFailedException e) {
+                --attempt;
+                batchingReader.setDirty(true);
             } finally {
                 evaluator.restore(savepoint);
             }
