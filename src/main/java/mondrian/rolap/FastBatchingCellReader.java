@@ -730,12 +730,13 @@ class BatchLoader {
        */
       private boolean isRequestCoveredByRollups(CellRequest request) {
           BitKey bitKey = request.getConstrainedColumnsBitKey();
+          RolapStar.Measure measure = request.getMeasure();
           if (!rollupBitmaps.contains(bitKey)) {
               return false;
           }
           List<SegmentHeader> firstOkList = null;
           for (RollupInfo rollupInfo : rollups) {
-              if (!rollupInfo.constrainedColumnsBitKey.equals(bitKey)) {
+              if (!rollupInfo.constrainedColumnsBitKey.equals(bitKey) || !rollupInfo.measure.equals(measure)) {
                   continue;
               }
               int candidateListsIdx = 0;
