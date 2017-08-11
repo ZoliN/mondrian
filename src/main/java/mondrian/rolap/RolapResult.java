@@ -196,6 +196,7 @@ public class RolapResult extends ResultBase {
             // then the Axes must be re-evaluated repeating Step 3.
             //
             /////////////////////////////////////////////////////////////////
+            long t1 = System.currentTimeMillis();
 
 
             // The AxisMember object is used to hold Members that are found
@@ -461,6 +462,8 @@ public class RolapResult extends ResultBase {
             } while (phase());
 
             evaluator.restore(savepoint);
+            final long t2 = System.currentTimeMillis();
+            System.out.println("Determine and execute axis (ms): " + (t2 - t1));
 
             for (int i = 0; i < axes.length; i++) {
                 System.out.println("Axis " + i + " size: "+axes[i].getPositions().size());
@@ -473,6 +476,8 @@ public class RolapResult extends ResultBase {
             } finally {
                 Locus.pop(locus);
             }
+            t1 = System.currentTimeMillis();
+            System.out.println("Execute body (ms): " + (t1 - t2));
 
             // If you are very close to running out of memory due to
             // the number of CellInfo's in cellInfos, then calling this
