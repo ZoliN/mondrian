@@ -17,6 +17,7 @@ import mondrian.rolap.TupleReader.MemberBuilder;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
 import mondrian.util.ConcatenableList;
+import mondrian.util.Pair;
 
 import org.apache.log4j.Logger;
 
@@ -142,6 +143,15 @@ public class NoCacheMemberReader implements MemberReader, MemberCache {
         List<RolapMember> parentMembers = new ArrayList<RolapMember>();
         parentMembers.add(parentMember);
         getMemberChildren(parentMembers, children, constraint);
+    }
+
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
     }
 
     public void getMemberChildren(

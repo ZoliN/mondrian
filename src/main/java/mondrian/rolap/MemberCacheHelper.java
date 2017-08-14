@@ -35,6 +35,10 @@ public class MemberCacheHelper implements MemberCache {
     final SmartMemberListCache<RolapMember, List<RolapMember>>
         mapMemberToChildren;
 
+    /** maps a parent member to a "name to member" map of its children */
+    final SmartMemberListCache<RolapMember, HashMap<String,RolapMember>>
+        mapMemberToChildrenMap;
+
     /** a cache for all members to ensure uniqueness */
     SmartCache<Pair<RolapCubeLevel, Object>, RolapMember> mapKeyToMember;
     RolapCubeHierarchy rolapHierarchy;
@@ -56,6 +60,8 @@ public class MemberCacheHelper implements MemberCache {
             new SoftSmartCache<Pair<RolapCubeLevel, Object>, RolapMember>();
         this.mapMemberToChildren =
             new SmartMemberListCache<RolapMember, List<RolapMember>>();
+        this.mapMemberToChildrenMap =
+                new SmartMemberListCache<RolapMember, HashMap<String,RolapMember>>();
     }
 
     // implement MemberCache
@@ -118,6 +124,29 @@ public class MemberCacheHelper implements MemberCache {
                 sqlConstraintFactory.getMemberChildrenConstraint(null);
         }
         mapMemberToChildren.put(member, constraint, children);
+    }
+
+    public HashMap<String, RolapMember> getChildrenMapFromCache(
+            RolapMember member,
+            MemberChildrenConstraint constraint)
+    {
+        if (constraint == null) {
+            constraint =
+                sqlConstraintFactory.getMemberChildrenConstraint(null);
+        }
+        HashMap<String, RolapMember> map = mapMemberToChildrenMap.get(member, constraint);
+        if (map != null) return map;
+        List<RolapMember> children = mapMemberToChildren.get(member, constraint);
+        if (children != null) {
+        	map = new HashMap<String, RolapMember>(children.size());
+        	for (RolapMember rolapMember : children) {
+				map.put(rolapMember.getName(), rolapMember);
+			}
+        	mapMemberToChildrenMap.put(member, constraint, map);
+            return map;
+        } else {
+        	return null;
+        }
     }
 
     public List<RolapMember> getLevelMembersFromCache(

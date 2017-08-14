@@ -14,7 +14,10 @@ import mondrian.olap.Id;
 import mondrian.rolap.TupleReader.MemberBuilder;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
+import mondrian.util.Pair;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -119,6 +122,15 @@ class DelegatingMemberReader implements MemberReader {
         MemberChildrenConstraint constraint)
     {
         memberReader.getMemberChildren(member, children, constraint);
+    }
+
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
     }
 
     public void getMemberChildren(

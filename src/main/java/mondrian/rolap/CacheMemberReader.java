@@ -229,6 +229,15 @@ class CacheMemberReader implements MemberReader, MemberCache {
         getMemberChildren(member, children);
     }
 
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
+    }
+
     public void getMemberChildren(
         List<RolapMember> parentMembers,
         List<RolapMember> children)

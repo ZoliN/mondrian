@@ -16,7 +16,9 @@ import mondrian.olap.Hierarchy;
 import mondrian.rolap.TupleReader.MemberBuilder;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
+import mondrian.util.Pair;
 
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -92,6 +94,17 @@ public interface MemberReader extends MemberSource {
         List<RolapMember> children,
         MemberChildrenConstraint constraint);
 
+    /**
+     * Returns a list of the children and a map of "name to childmember" of a Member, optionally applying a
+     * constraint.
+     *
+     * @param member Members whose children to find
+     * @param constraint Constraint
+     */
+    Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint);
+    
     /**
      * Populates a list of the children of a given set of Members, optionally
      * applying a constraint.

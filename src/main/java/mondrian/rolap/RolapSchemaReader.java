@@ -17,6 +17,7 @@ import mondrian.olap.*;
 import mondrian.olap.type.StringType;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
+import mondrian.util.Pair;
 
 import org.apache.log4j.Logger;
 
@@ -191,6 +192,14 @@ public class RolapSchemaReader
             getMemberReader(member.getHierarchy());
         memberReader.getMemberChildren(member, children, constraint);
         return children;
+    }
+
+    private Pair<List<RolapMember>, HashMap<String,RolapMember>> internalGetMemberChildrenWithMap(
+        RolapMember member, MemberChildrenConstraint constraint)
+    {
+        final MemberReader memberReader =
+            getMemberReader(member.getHierarchy());
+        return memberReader.getMemberChildren(member, constraint);
     }
 
     public void getParentChildContributingChildren(
@@ -445,18 +454,23 @@ public class RolapSchemaReader
         assert !(parent instanceof RolapHierarchy.LimitedRollupMember);
         try {
             MemberChildrenConstraint constraint;
-            if (childName instanceof Id.NameSegment
+            /*if (childName instanceof Id.NameSegment
                 && matchType.isExact())
             {
                 constraint = sqlConstraintFactory.getChildByNameConstraint(
                     parent, (Id.NameSegment) childName);
-            } else {
+            } else {*/
                 constraint =
                     sqlConstraintFactory.getMemberChildrenConstraint(null);
+            //}
+            Pair<List<RolapMember>, HashMap<String,RolapMember>> result =
+                internalGetMemberChildrenWithMap(parent, constraint);
+            List<RolapMember> children = result.left;
+            HashMap<String,RolapMember> childrenMap = result.right;
+            if (matchType.isExact() && childrenMap != null && childrenMap.size() > 0 && childName instanceof Id.NameSegment) {
+                return childrenMap.get(((Id.NameSegment)childName).name);
             }
-            List<RolapMember> children =
-                internalGetMemberChildren(parent, constraint);
-            if (children.size() > 0) {
+            else if (children != null && children.size() > 0) {
                 return
                     RolapUtil.findBestMemberMatch(
                         children,

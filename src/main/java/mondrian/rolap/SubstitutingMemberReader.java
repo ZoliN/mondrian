@@ -12,6 +12,7 @@ package mondrian.rolap;
 import mondrian.olap.Id;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
+import mondrian.util.Pair;
 
 import java.sql.SQLException;
 import java.util.*;
@@ -164,6 +165,16 @@ public abstract class SubstitutingMemberReader extends DelegatingMemberReader {
             desubstitute(member),
             new SubstitutingMemberList(children),
             constraint);
+    }
+
+    @Override
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
     }
 
     @Override

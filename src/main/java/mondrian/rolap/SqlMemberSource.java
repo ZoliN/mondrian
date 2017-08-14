@@ -1005,6 +1005,15 @@ public class SqlMemberSource
         getMemberChildren2(parentMember, children, constraint);
     }
 
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
+    }
+
     /**
      * If all parents belong to the same level and no parent/child is involved,
      * returns that level; this indicates that all member children can be

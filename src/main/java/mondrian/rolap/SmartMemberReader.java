@@ -17,6 +17,7 @@ import mondrian.rolap.TupleReader.MemberBuilder;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
 import mondrian.util.ConcatenableList;
+import mondrian.util.Pair;
 
 import java.util.*;
 
@@ -162,6 +163,32 @@ public class SmartMemberReader implements MemberReader {
         getMemberChildren(parentMembers, children, constraint);
     }
 
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children;
+        HashMap<String,RolapMember> childrenMap;
+
+        synchronized (cacheHelper) {
+            List<RolapMember> missed = new ArrayList<RolapMember>();
+            children =
+                cacheHelper.getChildrenFromCache(parentMember, constraint);
+            if (children == null) {
+                // the null member has no children
+                if (!parentMember.isNull()) {
+                    missed.add(parentMember);
+                }
+            }
+            if (missed.size() > 0) {
+                children = new ArrayList<RolapMember>();
+                readMemberChildren(missed, children, constraint);
+            }
+        	childrenMap = cacheHelper.getChildrenMapFromCache(parentMember, constraint);
+        }
+        return Pair.of(children, childrenMap);
+    }
+    
     public void getMemberChildren(
         List<RolapMember> parentMembers,
         List<RolapMember> children)

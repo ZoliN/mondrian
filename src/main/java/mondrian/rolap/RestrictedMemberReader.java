@@ -14,6 +14,7 @@ import mondrian.olap.*;
 import mondrian.resource.MondrianResource;
 import mondrian.rolap.sql.MemberChildrenConstraint;
 import mondrian.rolap.sql.TupleConstraint;
+import mondrian.util.Pair;
 
 import java.util.*;
 
@@ -95,6 +96,15 @@ class RestrictedMemberReader extends DelegatingMemberReader {
         List<RolapMember> fullChildren = new ArrayList<RolapMember>();
         memberReader.getMemberChildren(parentMember, fullChildren, constraint);
         processMemberChildren(fullChildren, children, constraint);
+    }
+
+    public Pair<List<RolapMember>, HashMap<String,RolapMember>> getMemberChildren(
+            RolapMember parentMember,
+            MemberChildrenConstraint constraint)
+    {
+        List<RolapMember> children = new ArrayList<RolapMember>();
+        getMemberChildren(parentMember, children, constraint);
+        return Pair.of(children, null);
     }
 
     private void processMemberChildren(
