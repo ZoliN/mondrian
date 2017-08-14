@@ -894,6 +894,7 @@ public class RolapResult extends ResultBase {
                 batchingReader.setDirty(true);
             } finally {
                 evaluator.restore(savepoint);
+                evaluator.setPreEvaluation(false);
             }
 
             if (!phase(((RolapEvaluator)evaluator).getPreEvalOptimizedColumns())) {

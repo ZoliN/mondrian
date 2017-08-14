@@ -101,11 +101,12 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                     if (((RolapEvaluator)evaluator).isPreEvaluation()) {
                         while (true) {
                             int arity = list1.getArity() + list2.getArity();
-                            result = TupleCollections.createList(arity);
-                            List<Member> firstTuple = new ArrayList<Member>(arity);
+                            List<Member> firstTuple = new ArrayList<Member>();
                             for (int i = 0; i < list1.getArity(); i++) {
                                 Member m = list1.get(0).get(i);
-                                if (!m.isAll()) {
+                                if (m.isMeasure()) {
+                                    arity--;
+                                } else if (!m.isAll()) {
                                     firstTuple.add(m);
                                 } else {
                                     Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
@@ -114,13 +115,16 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                             }
                             for (int i = 0; i < list2.getArity(); i++) {
                                 Member m = list2.get(0).get(i);
-                                if (!m.isAll()) {
+                                if (m.isMeasure()) {
+                                    arity--;
+                                } else if (!m.isAll()) {
                                     firstTuple.add(m);
                                 } else {
                                     Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
                                     firstTuple.add(firstChild);
                                 }
                             }
+                            result = TupleCollections.createList(arity);
                             result.add(firstTuple);
                             //we need measure to get measuregroup which is needed to get starcolumn
                             RolapStoredMeasure measure = null;
