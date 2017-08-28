@@ -72,9 +72,10 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                 // we want all beers, not just those sold in Mexico.
                 final int savepoint = evaluator.savepoint();
                 try {
+                    RolapEvaluator rolapEvaluator = (RolapEvaluator)evaluator;
                     evaluator.setNonEmpty(true);
                     for (Member member
-                        : ((RolapEvaluator) evaluator).getSlicerMembers())
+                        : rolapEvaluator.getSlicerMembers())
                     {
                         if (getType().getElementType().usesHierarchy(
                                 member.getHierarchy(), true))
@@ -98,7 +99,7 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                     }
                     final TupleList list2 = listCalc2.evaluateList(evaluator);
                     TupleList result = null;
-                    if (((RolapEvaluator)evaluator).isPreEvaluation()) {
+                    if (rolapEvaluator.isPreEvaluation()) {
                         while (true) {
                             int arity = list1.getArity() + list2.getArity();
                             List<Member> firstTuple = new ArrayList<Member>();
@@ -107,10 +108,13 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                                 if (m.isMeasure()) {
                                     arity--;
                                 } else if (!m.isAll()) {
-                                    firstTuple.add(m);
+                                    if (rolapEvaluator.evaluateSubquery(m)) {
+                                        firstTuple.add(m);
+                                    } else {
+                                        addMemberSatisfyingSubqueries(rolapEvaluator, firstTuple, m, false);
+                                    }
                                 } else {
-                                    Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
-                                    firstTuple.add(firstChild);
+                                    addMemberSatisfyingSubqueries(rolapEvaluator, firstTuple, m, true);
                                 }
                             }
                             for (int i = 0; i < list2.getArity(); i++) {
@@ -118,10 +122,13 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                                 if (m.isMeasure()) {
                                     arity--;
                                 } else if (!m.isAll()) {
-                                    firstTuple.add(m);
+                                    if (rolapEvaluator.evaluateSubquery(m)) {
+                                        firstTuple.add(m);
+                                    } else {
+                                        addMemberSatisfyingSubqueries(rolapEvaluator, firstTuple, m, false);
+                                    }
                                 } else {
-                                    Member firstChild = evaluator.getSchemaReader().getMemberChildren(m).get(0);
-                                    firstTuple.add(firstChild);
+                                    addMemberSatisfyingSubqueries(rolapEvaluator, firstTuple, m, true);
                                 }
                             }
                             result = TupleCollections.createList(arity);
@@ -175,7 +182,7 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                                 }
                                 result.add(tuple);
                             }
-                            ((RolapEvaluator) evaluator).setPreEvalOptimizedColumns(preEvalOptimizedColumns);
+                            rolapEvaluator.setPreEvalOptimizedColumns(preEvalOptimizedColumns);
                             break;
                         }
                     }
@@ -189,6 +196,21 @@ public class NonEmptyCrossJoinXLFunDef extends CrossJoinFunDef {
                 } finally {
                     evaluator.restore(savepoint);
                 }
+            }
+
+            private void addMemberSatisfyingSubqueries(RolapEvaluator rolapEvaluator, List<Member> firstTuple,
+                    Member m, boolean addChild) {
+                List<Member> members = addChild ? rolapEvaluator.getSchemaReader().getMemberChildren(m) 
+                        : rolapEvaluator.getSchemaReader().getLevelMembers(m.getLevel(), false);
+                boolean memberSatisfyingSubqueriesFound = false;
+                for (Member member : members) {
+                    if (rolapEvaluator.evaluateSubquery(member)) {
+                        firstTuple.add(member);
+                        memberSatisfyingSubqueriesFound = true;
+                        break;
+                    }
+                }
+                if (!memberSatisfyingSubqueriesFound) throw PreEvalFailedException.INSTANCE;
             }
 
             public boolean dependsOn(Hierarchy hierarchy) {

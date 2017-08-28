@@ -121,6 +121,10 @@ public class RolapEvaluator implements Evaluator {
     
     private TupleList slicerTuples;
     private List<TupleList> subQueryTuples = new ArrayList<TupleList>();
+    /**
+     * We collect subquery tuples with arity=1 into this
+     */
+    private Map<Level,Set<Member>> subQueryMapLevelToMemberSet = new HashMap<Level,Set<Member>>();
 
     private boolean nativeEnabled;
     private RolapMember[] nonAllMembers;
@@ -175,6 +179,7 @@ public class RolapEvaluator implements Evaluator {
         HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = subQueryPredicateInfoMap.get(measure.getMeasureGroup());
         if ( predicateInfos == null ) {
             predicateInfos = new HashMap<StarPredicate,CompoundPredicateInfo>();
+            //TODO: should "AND" subqueries applied to the same rolapstarcolumn!!
             for (TupleList tupleList : subQueryTuples) {
                 CompoundPredicateInfo cpi = new CompoundPredicateInfo(tupleList, measure , this);
                 predicateInfos.put(cpi.getPredicate(),cpi);
@@ -280,6 +285,16 @@ public class RolapEvaluator implements Evaluator {
         return true;
     }
     
+    
+    public boolean evaluateSubquery(Member member) {
+        Set<Member> subqueryMembers = subQueryMapLevelToMemberSet.get(member.getLevel());
+        if (subqueryMembers != null) {
+            return subqueryMembers.contains(member);
+        } else {
+            return true;
+        }
+    }
+    
     /**
      * States of the finite state machine for determining the max solve order
      * for the "scoped" behavior.
@@ -324,6 +339,7 @@ public class RolapEvaluator implements Evaluator {
         slicerPredicateInfo = parent.slicerPredicateInfo;
         subQueryTuples = parent.subQueryTuples;
         subQueryPredicateInfoMap = parent.subQueryPredicateInfoMap;
+        subQueryMapLevelToMemberSet = parent.subQueryMapLevelToMemberSet;
         expandingMember = parent.expandingMember;
 
         commands = new Object[10];
@@ -702,6 +718,41 @@ public class RolapEvaluator implements Evaluator {
      * @param tuples slicer
      */
     public final void addSubQueryTuples(TupleList tupleList) {
+        if (tupleList.getArity() == 1) {
+            Level level = tupleList.get(0).get(0).getLevel();
+            boolean onlySingleLevelInList = true;
+            for (List<Member> tuple : tupleList) {
+                //should we use equal()?
+                if (tuple.get(0).getLevel() != level) {
+                    onlySingleLevelInList = false;
+                    break;
+                }
+            }
+            if (onlySingleLevelInList) {
+                Set<Member> memberSet = subQueryMapLevelToMemberSet.get(level);
+                if (memberSet == null) {
+                    memberSet = new HashSet<Member>();
+                    subQueryMapLevelToMemberSet.put(level, memberSet);
+                    for (List<Member> tuple : tupleList) {
+                        memberSet.add(tuple.get(0));
+                    }
+                } else {
+                    //intersection of new and old sets 
+                    Set<Member> currentMemberSet = new HashSet<Member>();
+                    for (List<Member> tuple : tupleList) {
+                        currentMemberSet.add(tuple.get(0));
+                    }
+                    Iterator<Member> it = memberSet.iterator();
+                    while (it.hasNext()) {
+                       Member member = it.next(); 
+                       if (!currentMemberSet.contains(member)) {
+                           it.remove();
+                       }
+                    }
+                }
+                
+            }
+        }
         subQueryTuples.add(tupleList);
     }
 

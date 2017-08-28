@@ -777,7 +777,9 @@ public class RolapResult extends ResultBase {
                 batchingReader.getHitCount(),
                 batchingReader.getMissCount(),
                 batchingReader.getPendingCount());
-
+            System.out.println("batchingReader.getHitCount(): " + batchingReader.getHitCount());
+            System.out.println("batchingReader.getMissCount(): " + batchingReader.getMissCount());
+            System.out.println("batchingReader.getPendingCount(): " + batchingReader.getPendingCount());
             return batchingReader.loadAggregations(preEvalOptimizedColumns);
         } else {
             return false;

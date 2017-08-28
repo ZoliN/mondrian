@@ -913,11 +913,11 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
 
             List<SegmentColumn> nonWildcards =
                 new ArrayList<SegmentColumn>();
-            int bitIndex = 0;
+            int bitIndex = -1;
             for (SegmentColumn column : header.getConstrainedColumns()) {
                 final SegmentColumn constrainedColumn =
                     header.getConstrainedColumn(column.columnExpression);
-                bitIndex = header.constrainedColsBitKey.nextSetBit(bitIndex);
+                bitIndex = header.constrainedColsBitKey.nextSetBit(bitIndex+1);
 
                 // REVIEW: How are null key values represented in coordinates?
                 // Assuming that they are represented by null ref.

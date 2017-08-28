@@ -225,7 +225,7 @@ public class FastBatchingCellReader implements CellReader {
         if (!isDirty()) {
             return false;
         }
-
+        long t1o = System.currentTimeMillis();
         // List of futures yielding segments populated by SQL statements. If
         // loading requires several iterations, we just append to the list. We
         // don't mind if it takes a while for SQL statements to return.
@@ -236,6 +236,7 @@ public class FastBatchingCellReader implements CellReader {
             new ArrayList<CellRequest>(cellRequests);
 
         for (int iteration = 0;; ++iteration) {
+            long t1 = System.currentTimeMillis();
             final BatchLoader.LoadBatchResponse response =
                 cacheMgr.execute(
                     new BatchLoader.LoadBatchCommand(
@@ -246,12 +247,16 @@ public class FastBatchingCellReader implements CellReader {
                         Collections.unmodifiableList(cellRequests1),
                         preEvalOptimizedColumns));
 
+            
+            long t2 = System.currentTimeMillis();
+            System.out.println("cacheMgr.execute (ms): " + (t2 - t1));
             int failureCount = 0;
 
             // Segments that have been retrieved from cache this cycle. Allows
             // us to reduce calls to the external cache.
             Map<SegmentHeader, SegmentBody> headerBodies =
                 new HashMap<SegmentHeader, SegmentBody>();
+            t1 = System.currentTimeMillis();
 
             // Load each suggested segment from cache, and place it in
             // thread-local cache. Note that this step can't be done by the
@@ -276,6 +281,8 @@ public class FastBatchingCellReader implements CellReader {
                     response.convert(header, body);
                 segmentWithData.getStar().register(segmentWithData);
             }
+            t2 = System.currentTimeMillis();
+            System.out.println("Load from cache done (ms): " + (t2 - t1));
 
             // Perform each suggested rollup.
             //
@@ -286,6 +293,8 @@ public class FastBatchingCellReader implements CellReader {
             // into the index and the header/bodies in cache.
             final Map<SegmentHeader, SegmentBody> succeededRollups =
                 new HashMap<SegmentHeader, SegmentBody>();
+            
+            t1 = System.currentTimeMillis();
 
             for (final BatchLoader.RollupInfo rollup : response.rollups) {
                 // Gather the required segments.
@@ -361,6 +370,8 @@ public class FastBatchingCellReader implements CellReader {
                         });
                 }
             }
+            t2 = System.currentTimeMillis();
+            System.out.println("Rollup done (ms): " + (t2 - t1));
 
             // Wait for SQL statements to end -- but only if there are no
             // failures.
@@ -374,6 +385,7 @@ public class FastBatchingCellReader implements CellReader {
             // only way to make progress.
             sqlSegmentMapFutures.addAll(response.sqlSegmentMapFutures);
             if (failureCount == 0 || iteration > 0) {
+                t1= System.currentTimeMillis();
                 // Wait on segments being loaded by someone else.
                 for (Map.Entry<SegmentHeader, Future<SegmentBody>> entry
                     : response.futures.entrySet())
@@ -403,11 +415,15 @@ public class FastBatchingCellReader implements CellReader {
                     // TODO: also pass back SegmentHeader and SegmentBody,
                     // and add these to headerBodies. Might help?
                 }
+                t2 = System.currentTimeMillis();
+                System.out.println("Wait on segments being loaded (ms): " + (t2 - t1));
             }
 
             if (failureCount == 0) {
                 break;
             }
+
+            t1 = System.currentTimeMillis();
 
             // Figure out which cell requests are not satisfied by any of the
             // segments retrieved.
@@ -422,6 +438,10 @@ public class FastBatchingCellReader implements CellReader {
                 }
             }
 
+            t2 = System.currentTimeMillis();
+            System.out.println("Figure out which cell requests are not satisfied (ms): " + (t2 - t1));
+
+            
             if (cellRequests1.isEmpty()) {
                 break;
             }
@@ -445,6 +465,8 @@ public class FastBatchingCellReader implements CellReader {
 
         dirty = false;
         cellRequests.clear();
+        long t2o = System.currentTimeMillis();
+        System.out.println("loadaggr (ms): " + (t2o - t1o));
         return true;
     }
 
@@ -1579,6 +1601,7 @@ class BatchLoader {
          */
         boolean canBatch(Batch other, Set<RolapStar.Column> preEvalOptimizedColumns) {
             return hasOverlappingBitKeys(other)
+                && haveSameGroupByPredicatesBitKey(other)
                 && constraintsMatch(other, preEvalOptimizedColumns)
                 && hasSameMeasureList(other)
                 && !hasDistinctCountMeasure()
@@ -1850,6 +1873,10 @@ class BatchLoader {
                 bitKey.set(measure.getBitPosition());
             }
             return bitKey;
+        }
+        
+        private boolean haveSameGroupByPredicatesBitKey(Batch other) {
+            return batchKey.getNonGroupByConstrainedColumnsBitKey().equals(other.batchKey.getNonGroupByConstrainedColumnsBitKey());
         }
     }
 
