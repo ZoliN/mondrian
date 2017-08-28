@@ -16,6 +16,7 @@ import mondrian.calc.impl.AbstractListCalc;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
 import mondrian.olap.type.Type;
+import mondrian.rolap.RolapEvaluator;
 
 import java.util.*;
 
@@ -120,12 +121,18 @@ class DrilldownMemberFunDef extends FunDefBase {
                         }
                         if (children==null) break;
                         final Member[] tuple2 = tuple.clone();
-                        for (Member childMember : children) {
-                            tuple2[idrilled] = childMember;
+                        if (((RolapEvaluator)evaluator).isPreEvaluation() && children.size() != 0) {
+                            tuple2[idrilled] = children.get(0);
                             resultList.addTuple(tuple2);
-                            if (recursive) {
-                                drillDownObj(
-                                    evaluator, tuple2, memberSet, resultList, hier);
+                        } else {
+                            for (Member childMember : children) {
+                                tuple2[idrilled] = childMember;
+                                resultList.addTuple(tuple2);
+                                
+                                if (recursive) {
+                                    drillDownObj(
+                                        evaluator, tuple2, memberSet, resultList, hier);
+                                }
                             }
                         }
                         break;
