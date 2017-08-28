@@ -22,6 +22,7 @@ import mondrian.olap.type.SetType;
 import mondrian.olap.type.Type;
 import mondrian.resource.MondrianResource;
 import mondrian.rolap.agg.AndPredicate;
+import mondrian.rolap.agg.ListColumnPredicate;
 import mondrian.rolap.agg.ListPredicate;
 import mondrian.rolap.agg.OrPredicate;
 import mondrian.rolap.agg.PredicateColumn;
@@ -149,6 +150,17 @@ public class CompoundPredicateInfo {
             for (BitKey bitKey : compoundGroupMap.keySet()) {
                 compoundBitKey = compoundBitKey.or(bitKey);
             }
+        }
+        if (compoundBitKey.cardinality() == 1) {
+            List<StarColumnPredicate> starColPredList = new ArrayList<StarColumnPredicate>();
+            if (compoundPredicate instanceof ValueColumnPredicate) {
+                starColPredList.add((StarColumnPredicate)compoundPredicate);
+            } else {
+                for (StarPredicate starPredicate : ((ListPredicate)compoundPredicate).getChildren()) {
+                    starColPredList.add((StarColumnPredicate)starPredicate);
+                }
+            }
+            compoundPredicate = new ListColumnPredicate(compoundPredicate.getColumnList().get(0),starColPredList);
         }
         return  Pair.of(compoundBitKey, compoundPredicate);
     }

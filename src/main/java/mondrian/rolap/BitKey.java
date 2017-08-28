@@ -15,6 +15,7 @@ package mondrian.rolap;
 import java.io.Serializable;
 import java.util.BitSet;
 import java.util.Iterator;
+import java.util.Set;
 
 /**
  * Represents a set of bits.
@@ -228,6 +229,18 @@ public interface BitKey
             for (int i = bitSet.nextSetBit(0);
                 i >= 0;
                 i = bitSet.nextSetBit(i + 1))
+            {
+                bitKey.set(i);
+            }
+            return bitKey;
+        }
+        
+        /**
+         * Creates a {@link BitKey} with the same contents as a {@link Set}.
+         */
+        public static BitKey makeBitKey(Set<Integer> bitSet) {
+            BitKey bitKey = makeBitKey(bitSet.size());
+            for (Integer i : bitSet) 
             {
                 bitKey.set(i);
             }

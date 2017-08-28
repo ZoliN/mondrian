@@ -49,6 +49,7 @@ public class ListColumnPredicate extends AbstractColumnPredicate {
      */
     private int hashValue;
 
+
     /**
      * Creates a ListColumnPredicate
      *
@@ -125,14 +126,19 @@ public class ListColumnPredicate extends AbstractColumnPredicate {
     }
 
     public boolean evaluate(Object value) {
-        for (StarColumnPredicate childPredicate : children) {
-            if (childPredicate.evaluate(value)) {
-                return true;
+        if (values != null) {
+            return values.contains(value);
+        } else {
+            for (StarColumnPredicate childPredicate : children) {
+                if (childPredicate.evaluate(value)) {
+                    return true;
+                }
             }
         }
         return false;
     }
 
+    
     public boolean equalConstraint(StarPredicate that) {
         boolean isEqual =
             that instanceof ListColumnPredicate

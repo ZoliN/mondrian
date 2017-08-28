@@ -102,6 +102,7 @@ public class SegmentLoader {
         List<GroupingSet> groupingSets,
         List<StarPredicate> compoundPredicateList,
         List<StarPredicate> volaCompoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates,
         List<Future<Map<Segment, SegmentWithData>>> segmentFutures)
     {
         if (!MondrianProperties.instance().DisableCaching.get()) {
@@ -133,7 +134,8 @@ public class SegmentLoader {
                         this,
                         cellRequestCount,
                         groupingSets,
-                        compoundPredicateList)));
+                        compoundPredicateList,
+                        nonGroupByPredicates)));
         } catch (Exception e) {
             throw new MondrianException(e);
         }
@@ -147,19 +149,22 @@ public class SegmentLoader {
         private final int cellRequestCount;
         private final List<GroupingSet> groupingSets;
         private final List<StarPredicate> compoundPredicateList;
+        private final StarColumnPredicate[] nonGroupByPredicates;
 
         public SegmentLoadCommand(
             Locus locus,
             SegmentLoader segmentLoader,
             int cellRequestCount,
             List<GroupingSet> groupingSets,
-            List<StarPredicate> compoundPredicateList)
+            List<StarPredicate> compoundPredicateList,
+            StarColumnPredicate[] nonGroupByPredicates)
         {
             this.locus = locus;
             this.segmentLoader = segmentLoader;
             this.cellRequestCount = cellRequestCount;
             this.groupingSets = groupingSets;
             this.compoundPredicateList = compoundPredicateList;
+            this.nonGroupByPredicates = nonGroupByPredicates;
         }
 
         public Map<Segment, SegmentWithData> call() throws Exception {
@@ -168,7 +173,8 @@ public class SegmentLoader {
                 return segmentLoader.loadImpl(
                     cellRequestCount,
                     groupingSets,
-                    compoundPredicateList);
+                    compoundPredicateList,
+                    nonGroupByPredicates);
             } finally {
                 Locus.pop(locus);
             }
@@ -178,7 +184,8 @@ public class SegmentLoader {
     protected Map<Segment, SegmentWithData> loadImpl(
         int cellRequestCount,
         List<GroupingSet> groupingSets,
-        List<StarPredicate> compoundPredicateList)
+        List<StarPredicate> compoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         SqlStatement stmt = null;
         GroupingSetsList groupingSetsList =
@@ -197,7 +204,8 @@ public class SegmentLoader {
             stmt = createExecuteSql(
                 cellRequestCount,
                 groupingSetsList,
-                compoundPredicateList);
+                compoundPredicateList,
+                nonGroupByPredicates);
 
             if (stmt == null) {
                 // Nothing to do. We're done here.
@@ -565,12 +573,13 @@ public class SegmentLoader {
     SqlStatement createExecuteSql(
         int cellRequestCount,
         final GroupingSetsList groupingSetsList,
-        List<StarPredicate> compoundPredicateList)
+        List<StarPredicate> compoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         RolapStar star = groupingSetsList.getStar();
         Pair<String, List<SqlStatement.Type>> pair =
             AggregationManager.generateSql(
-                groupingSetsList, compoundPredicateList);
+                groupingSetsList, compoundPredicateList, nonGroupByPredicates);
         final Locus locus =
             new SqlStatement.StatementLocus(
                 Locus.peek().execution,

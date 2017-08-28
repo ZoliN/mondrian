@@ -146,6 +146,23 @@ public class CellRequest {
     private boolean isDirty = true;
 
     /**
+     * Simple (single column) subquery predicates.
+     */
+    private TreeMap<Integer, ListColumnPredicate> subqueryPredicates;
+
+    /**
+     * Simple subquery predicates of columns which are not constrained by cellrequest otherwise (i.e. it won't be in group by list)
+     */    
+    private TreeMap<Integer, ListColumnPredicate> subqueryNonGroupByPredicates;
+    
+    private BitKey nonGroupByConstrainedColumnsBitKey;
+
+    private List<String> subqueryNonGroupByPredicatesSQL = null;
+
+
+
+
+    /**
      * Creates a {@link CellRequest}.
      *
      * @param measure Measure the request is for
@@ -213,6 +230,14 @@ public class CellRequest {
             this.constrainedColumnsBitKey.set(bitPosition);
             numColumns++;
         }
+        if (subqueryPredicates != null) {
+            ListColumnPredicate simpleSubQPredicate = subqueryPredicates.get(bitPosition);
+            if (predicate != null && simpleSubQPredicate != null) {
+                if ( !simpleSubQPredicate.evaluate( ((ValueColumnPredicate)predicate).getValue() ) ) {
+                    unsatisfiable = true;
+                }
+            }
+        }
 
         // Note: it is possible and valid for predicate to be null here
         this.sparseColumnPredicateList[bitPosition] = predicate;
@@ -264,7 +289,10 @@ public class CellRequest {
         this.compoundPredicateStrings = compoundPredicateStrings;
         noVolaCompoundPredicateAdded = true;
     }
-
+    
+    public void setSubqueryPredicates(TreeMap<Integer, ListColumnPredicate> subqueryPredicates) {
+        this.subqueryPredicates = subqueryPredicates;
+    }
     
     /**
      * Returns the measure of this cell request.
@@ -292,6 +320,11 @@ public class CellRequest {
         return constrainedColumnsBitKey;
     }
 
+
+    public BitKey getNonGroupByConstrainedColumnsBitKey() {
+        return nonGroupByConstrainedColumnsBitKey;
+    }
+    
     /**
      * Returns the map of compound predicates, or null if empty.
      *
@@ -326,6 +359,22 @@ public class CellRequest {
             return compoundPredicateStrings;
         }
         return Collections.emptyList();
+    }
+    
+
+    public TreeMap<Integer, ListColumnPredicate> getSubqueryNonGroupByPredicates() {
+        return subqueryNonGroupByPredicates;
+    }
+
+    public void setSubqueryNonGroupByPredicates(TreeMap<Integer, ListColumnPredicate> subqueryNonGroupByPredicates,List<String> subqueryNonGroupByPredicatesSQL) {
+        this.subqueryNonGroupByPredicates = subqueryNonGroupByPredicates;
+        this.nonGroupByConstrainedColumnsBitKey = BitKey.Factory.makeBitKey(subqueryNonGroupByPredicates.keySet());
+        this.subqueryNonGroupByPredicatesSQL = subqueryNonGroupByPredicatesSQL;
+    }
+    
+
+    public List<String> getSubqueryNonGroupByPredicatesSQL() {
+        return subqueryNonGroupByPredicatesSQL;
     }
     
     /**
@@ -433,6 +482,13 @@ public class CellRequest {
      */
     public boolean isUnsatisfiable() {
         return unsatisfiable;
+    }
+    
+    public void initEmptySubquery() {
+        //subqueryPredicates = Collections.emptyMap();
+        //subqueryNonGroupByPredicates = (TreeMap<Integer, ListColumnPredicate>) Collections.<Integer, ListColumnPredicate>emptyMap();
+        nonGroupByConstrainedColumnsBitKey = BitKey.Factory.makeBitKey(0);
+        subqueryNonGroupByPredicatesSQL = Collections.emptyList();;
     }
 }
 

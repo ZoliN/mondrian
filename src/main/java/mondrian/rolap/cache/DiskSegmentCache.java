@@ -54,7 +54,7 @@ public class DiskSegmentCache implements SegmentCache {
     }
     
     public SegmentBody get(SegmentHeader header) {
-        System.out.println("disk sc get:" + header.hashCode());
+        System.out.println("disk sc get:" + header.toString());
         if (!cachedIDs.contains(header.getUniqueID())) return null;
 
         FileInputStream fileIn = null;
@@ -120,7 +120,7 @@ public class DiskSegmentCache implements SegmentCache {
     public boolean put(final SegmentHeader header, SegmentBody body) {
         // REVIEW: What's the difference between returning false
         // and throwing an exception?
-        System.out.println("disk sc put:" + header.hashCode());
+        System.out.println("disk sc put:" + header.toString());
         
         FileOutputStream fileOut = null;
         ObjectOutputStream out = null;

@@ -526,7 +526,7 @@ public class RolapResult extends ResultBase {
     
         
     void executeSubQuery(Query query,RolapEvaluator evaluator) {
-        //System.out.println("Subquery: " + query.toString());
+        System.out.println("Subquery: " + query.toString());
 
         if (query.getSubQuery()!=null) executeSubQuery(query.getSubQuery(), evaluator.push());
         

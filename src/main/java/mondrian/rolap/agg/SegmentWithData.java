@@ -65,10 +65,12 @@ public class SegmentWithData extends Segment {
     {
         this(
             segment.getStar(),
-            segment.getConstrainedColumnsBitKey(),
+            segment.constrainedColumnsBitKey,
+            segment.nonGroupByConstrainedColumnsBitKey,
             segment.getColumns(),
             segment.measure,
             segment.predicates,
+            segment.nonGroupByPredicates,
             segment.getExcludedRegions(),
             segment.compoundPredicateList,
             segment.volaCompoundPredicateList,
@@ -91,9 +93,11 @@ public class SegmentWithData extends Segment {
     private SegmentWithData(
         RolapStar star,
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar.Column[] columns,
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
+        StarColumnPredicate[] nonGroupByPredicates,
         List<ExcludedRegion> excludedRegions,
         final List<StarPredicate> compoundPredicateList,
         final List<StarPredicate> volaCompoundPredicateList,
@@ -103,9 +107,11 @@ public class SegmentWithData extends Segment {
         super(
             star,
             constrainedColumnsBitKey,
+            nonGroupByConstrainedColumnsBitKey,
             columns,
             measure,
             predicates,
+            nonGroupByPredicates,
             excludedRegions,
             compoundPredicateList,
             volaCompoundPredicateList);
@@ -335,8 +341,8 @@ public class SegmentWithData extends Segment {
 
         // Create a segment with the new data set.
         return new SegmentWithData(
-            star, constrainedColumnsBitKey, columns, measure,
-            newPredicates, excludedRegions, compoundPredicateList,volaCompoundPredicateList,
+            star, constrainedColumnsBitKey, nonGroupByConstrainedColumnsBitKey, columns, measure,
+            newPredicates, nonGroupByPredicates, excludedRegions, compoundPredicateList,volaCompoundPredicateList,
             newData, newAxes);
     }
 

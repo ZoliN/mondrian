@@ -61,7 +61,9 @@ public class Aggregation {
     private final List<StarPredicate> volaCompoundPredicateList;
     private final RolapStar star;
     private final BitKey constrainedColumnsBitKey;
-
+    private final BitKey nonGroupByConstrainedColumnsBitKey;
+    private final StarColumnPredicate[] nonGroupByPredicates;
+    
     /**
      * Setting for optimizing SQL predicates.
      */
@@ -88,6 +90,10 @@ public class Aggregation {
         this.star = aggregationKey.getStar();
         this.constrainedColumnsBitKey =
             aggregationKey.getConstrainedColumnsBitKey();
+        this.nonGroupByConstrainedColumnsBitKey =
+                aggregationKey.getNonGroupByConstrainedColumnsBitKey();
+        this.nonGroupByPredicates =
+                aggregationKey.getNonGroupByPredicates();
         this.maxConstraints =
             MondrianProperties.instance().MaxConstraints.get();
         this.creationTimestamp = new Date();
@@ -156,6 +162,7 @@ public class Aggregation {
                     Collections.singletonList(groupingSet)),
                 compoundPredicateList,
                 volaCompoundPredicateList,
+                nonGroupByPredicates,
                 segmentFutures);
         }
     }
@@ -175,9 +182,11 @@ public class Aggregation {
                     starConverter,
                     star,
                     constrainedColumnsBitKey,
+                    nonGroupByConstrainedColumnsBitKey,
                     columns,
                     measure,
                     predicates,
+                    nonGroupByPredicates,
                     Collections.<Segment.ExcludedRegion>emptyList(),
                     compoundPredicateList,
                     volaCompoundPredicateList);

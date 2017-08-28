@@ -48,17 +48,20 @@ public class SegmentHeader implements Serializable {
     private final int arity;
     private final List<SegmentColumn> constrainedColumns;
     private final List<SegmentColumn> excludedRegions;
+    private final List<SegmentColumn> nonGroupByConstrainedColumns;
+    public final List<String> nonGroupByConstrainedColumnsSQL;
     public final List<String> compoundPredicates;
     public final String measureName;
     public final String cubeName;
     public final String schemaName;
     public final String rolapStarFactTableName;
     public final BitKey constrainedColsBitKey;
+    public final BitKey nonGroupByConstrainedColsBitKey;
     private final int hashCode;
     private ByteString uniqueID;
     private String description;
     public final ByteString schemaChecksum;
-
+    private String axesdescription;
     /**
      * Creates a segment header.
      *
@@ -82,12 +85,17 @@ public class SegmentHeader implements Serializable {
         String cubeName,
         String measureName,
         List<SegmentColumn> constrainedColumns,
+        List<SegmentColumn> nonGroupByConstrainedColumns,
+        List<String> nonGroupByConstrainedColumnsSQL,
         List<String> compoundPredicates,
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
+        BitKey nonGroupByConstrainedColsBitKey,
         List<SegmentColumn> excludedRegions)
     {
         this.constrainedColumns = constrainedColumns;
+        this.nonGroupByConstrainedColumns = nonGroupByConstrainedColumns;
+        this.nonGroupByConstrainedColumnsSQL = nonGroupByConstrainedColumnsSQL;
         this.excludedRegions = excludedRegions;
         this.schemaName = schemaName;
         this.schemaChecksum = schemaChecksum;
@@ -97,11 +105,13 @@ public class SegmentHeader implements Serializable {
         this.compoundPredicates = compoundPredicates;
         this.rolapStarFactTableName = rolapStarFactTableName;
         this.constrainedColsBitKey = constrainedColsBitKey;
+        this.nonGroupByConstrainedColsBitKey = nonGroupByConstrainedColsBitKey;
         this.arity = constrainedColumns.size();
         // Hash code might be used extensively. Better compute
         // it up front.
         this.hashCode = computeHashCode();
     }
+
 
     private int computeHashCode() {
         int hash = 42;
@@ -115,6 +125,7 @@ public class SegmentHeader implements Serializable {
                 hash = Util.hashArray(hash, col.values.toArray());
             }
         }
+        hash = Util.hash(hash, "|+"); //to avoid mixup with nonGroupByConstrainedColumns
         for (SegmentColumn col : this.excludedRegions) {
             hash = Util.hash(hash, col.columnExpression);
             if (col.values != null) {
@@ -122,6 +133,12 @@ public class SegmentHeader implements Serializable {
             }
         }
         hash = Util.hash(hash, compoundPredicates);
+        for (SegmentColumn col : this.nonGroupByConstrainedColumns) {
+            hash = Util.hash(hash, col.columnExpression);
+            if (col.values != null) {
+                hash = Util.hashArray(hash, col.values.toArray());
+            }
+        }
         return hash;
     }
 
@@ -161,9 +178,12 @@ public class SegmentHeader implements Serializable {
                 cubeName,
                 measureName,
                 new ArrayList<SegmentColumn>(colsToAdd.values()),
+                nonGroupByConstrainedColumns,
+                nonGroupByConstrainedColumnsSQL,
                 Collections.<String>emptyList(),
                 rolapStarFactTableName,
                 constrainedColsBitKey,
+                nonGroupByConstrainedColsBitKey,
                 Collections.<SegmentColumn>emptyList());
     }
 
@@ -248,14 +268,17 @@ public class SegmentHeader implements Serializable {
                 cubeName,
                 measureName,
                 constrainedColumns,
+                nonGroupByConstrainedColumns,
+                nonGroupByConstrainedColumnsSQL,
                 compoundPredicates,
                 rolapStarFactTableName,
                 constrainedColsBitKey,
+                nonGroupByConstrainedColsBitKey,
                 new ArrayList<SegmentColumn>(newRegions.values()));
     }
 
     public String toString() {
-        return this.getDescription();
+        return this.getAxesDescription();
     }
 
     /**
@@ -311,6 +334,11 @@ public class SegmentHeader implements Serializable {
     public BitKey getConstrainedColumnsBitKey() {
         return this.constrainedColsBitKey.copy();
     }
+    
+    public List<SegmentColumn> getNonGroupByConstrainedColumns() {
+        return nonGroupByConstrainedColumns;
+    }
+ 
 
     /**
      * Returns a unique identifier for this header. The identifier
@@ -335,6 +363,7 @@ public class SegmentHeader implements Serializable {
                     }
                 }
             }
+            hashSB.append("|+"); //to avoid mixup with nonGroupByConstrainedColumns
             for (SegmentColumn c : excludedRegions) {
                 hashSB.append(c.columnExpression);
                 if (c.values != null) {
@@ -345,6 +374,14 @@ public class SegmentHeader implements Serializable {
             }
             for (String c : compoundPredicates) {
                 hashSB.append(c);
+            }
+            for (SegmentColumn c : nonGroupByConstrainedColumns) {
+                hashSB.append(c.columnExpression);
+                if (c.values != null) {
+                    for (Object value : c.values) {
+                        hashSB.append(String.valueOf(value));
+                    }
+                }
             }
             this.uniqueID =
                 new ByteString(Util.digestSha256(hashSB.toString()));
@@ -372,6 +409,24 @@ public class SegmentHeader implements Serializable {
             descriptionSB.append("]\n");
             descriptionSB.append("Axes:[");
             for (SegmentColumn c : constrainedColumns) {
+                descriptionSB.append("\n    {");
+                descriptionSB.append(c.columnExpression);
+                descriptionSB.append("=(");
+                if (c.values == null) {
+                    descriptionSB.append("* ");
+                } else {
+                    for (Object value : c.values) {
+                        descriptionSB.append("'");
+                        descriptionSB.append(value);
+                        descriptionSB.append("',");
+                    }
+                }
+                descriptionSB.deleteCharAt(descriptionSB.length() - 1);
+                descriptionSB.append(")}");
+            }
+            descriptionSB.append("]\n");
+            descriptionSB.append("Non-GroupBy filters:[");
+            for (SegmentColumn c : nonGroupByConstrainedColumns) {
                 descriptionSB.append("\n    {");
                 descriptionSB.append(c.columnExpression);
                 descriptionSB.append("=(");
@@ -419,6 +474,36 @@ public class SegmentHeader implements Serializable {
             this.description = descriptionSB.toString();
         }
         return description;
+    }
+    
+    
+    public String getAxesDescription() {
+        if (this.axesdescription == null) {
+            StringBuilder descriptionSB = new StringBuilder();
+            descriptionSB.append("]\nMeasure:[");
+            descriptionSB.append(this.measureName);
+            descriptionSB.append("]\n");
+            descriptionSB.append("Axes:[");
+            for (SegmentColumn c : constrainedColumns) {
+                descriptionSB.append("\n    {");
+                descriptionSB.append(c.columnExpression);
+                descriptionSB.append("=(");
+                if (c.values == null) {
+                    descriptionSB.append("* ");
+                } else {
+                    for (Object value : c.values) {
+                        descriptionSB.append("'");
+                        descriptionSB.append(value);
+                        descriptionSB.append("',");
+                    }
+                }
+                descriptionSB.deleteCharAt(descriptionSB.length() - 1);
+                descriptionSB.append(")}");
+            }
+            descriptionSB.append("]\n");
+           this.axesdescription = descriptionSB.toString();
+        }
+        return axesdescription;
     }
 }
 

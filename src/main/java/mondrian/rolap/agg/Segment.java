@@ -94,9 +94,13 @@ public class Segment {
      * returned for that constraining column.
      */
     public final StarColumnPredicate[] predicates;
+    
+    public final StarColumnPredicate[] nonGroupByPredicates;
+    
 
     protected final RolapStar star;
     protected final BitKey constrainedColumnsBitKey;
+    protected final BitKey nonGroupByConstrainedColumnsBitKey;
 
     /**
      * List of regions to ignore when reading this segment. This list is
@@ -126,11 +130,13 @@ public class Segment {
     public Segment(
         RolapStar star,
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar.Column[] aggColumns,
         RolapStar.Column[] baseColumns,
         RolapStar.Measure aggMeasure,
         RolapStar.Measure baseMeasure,
         StarColumnPredicate[] predicates,
+        StarColumnPredicate[] nonGroupByPredicates,
         List<ExcludedRegion> excludedRegions,
         final List<StarPredicate> compoundPredicateList,
         final List<StarPredicate> volaCompoundPredicateList)
@@ -138,11 +144,13 @@ public class Segment {
         this.id = nextId++;
         this.star = star;
         this.constrainedColumnsBitKey = constrainedColumnsBitKey;
+        this.nonGroupByConstrainedColumnsBitKey = nonGroupByConstrainedColumnsBitKey;
         this.columns = baseColumns;
         this.aggColumns = aggColumns;
         this.measure = baseMeasure;
         this.aggMeasure = aggMeasure;
         this.predicates = predicates;
+        this.nonGroupByPredicates = nonGroupByPredicates;
         this.excludedRegions = excludedRegions;
         this.compoundPredicateList = compoundPredicateList;
         final List<BitKey> compoundPredicateBitKeys =
@@ -162,7 +170,8 @@ public class Segment {
             AggregationKey.computeHashCode(
                 constrainedColumnsBitKey,
                 star,
-                compoundPredicateBitKeys);
+                compoundPredicateBitKeys,
+                nonGroupByConstrainedColumnsBitKey);
         this.volaCompoundPredicateList = volaCompoundPredicateList;
         final List<BitKey> volaCompoundPredicateBitKeys =
             volaCompoundPredicateList == null
@@ -186,9 +195,11 @@ public class Segment {
     public Segment(
         RolapStar star,
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar.Column[] columns,
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
+        StarColumnPredicate[] nonGroupByPredicates,
         List<ExcludedRegion> excludedRegions,
         final List<StarPredicate> compoundPredicateList,
         final List<StarPredicate> volaCompoundPredicateList)
@@ -196,9 +207,11 @@ public class Segment {
         this(
             star,
             constrainedColumnsBitKey,
+            nonGroupByConstrainedColumnsBitKey,
             columns, columns,
             measure, measure,
             predicates,
+            nonGroupByPredicates,
             excludedRegions,
             compoundPredicateList,
             volaCompoundPredicateList);
@@ -208,9 +221,11 @@ public class Segment {
         AggregationManager.StarConverter starConverter,
         RolapStar star,
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar.Column[] columns,
         RolapStar.Measure measure,
         StarColumnPredicate[] predicates,
+        StarColumnPredicate[] nonGroupByPredicates,
         List<ExcludedRegion> excludedRegions,
         final List<StarPredicate> compoundPredicateList,
         final List<StarPredicate> volaCompoundPredicateList)
@@ -219,11 +234,13 @@ public class Segment {
             return new Segment(
                 starConverter.convertStar(star),
                 starConverter.convertBitKey(constrainedColumnsBitKey),
+                starConverter.convertBitKey(nonGroupByConstrainedColumnsBitKey),
                 columns,
                 starConverter.convertColumnArray(columns),
                 measure,
                 starConverter.convertMeasure(measure),
                 predicates,
+                nonGroupByPredicates,
                 Collections.<ExcludedRegion>emptyList(),
                 starConverter.convertPredicateList(compoundPredicateList),
                 starConverter.convertPredicateList(volaCompoundPredicateList));
@@ -231,9 +248,11 @@ public class Segment {
             return new Segment(
                 star,
                 constrainedColumnsBitKey,
+                nonGroupByConstrainedColumnsBitKey,
                 columns,
                 measure,
                 predicates,
+                nonGroupByPredicates,
                 excludedRegions,
                 compoundPredicateList,
                 volaCompoundPredicateList);

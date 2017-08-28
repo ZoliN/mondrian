@@ -34,6 +34,7 @@ public class MemorySegmentCache implements SegmentCache {
         new CopyOnWriteArrayList<SegmentCacheListener>();
 
     public SegmentBody get(SegmentHeader header) {
+        System.out.println("msc get:" + header.toString());
         final SoftReference<SegmentBody> ref = map.get(header);
         if (ref == null) {
             return null;
@@ -65,6 +66,7 @@ public class MemorySegmentCache implements SegmentCache {
     public boolean put(final SegmentHeader header, SegmentBody body) {
         // REVIEW: What's the difference between returning false
         // and throwing an exception?
+        System.out.println("msc put:" + header.toString());
         map.put(header, new SoftReference<SegmentBody>(body));
         fireSegmentCacheEvent(
             new SegmentCache.SegmentCacheListener.SegmentCacheEvent() {

@@ -115,17 +115,39 @@ public class SegmentBuilder {
         SegmentHeader header,
         RolapStar star,
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar.Column[] constrainedColumns,
+        RolapStar.Column[] nonGroupByConstrainedColumns,
         RolapStar.Measure measure,
         List<StarPredicate> compoundPredicates,
         List<StarPredicate> volaCompoundPredicates)
     {
+        final List<StarColumnPredicate> predicateList = constrainedColumnsToPredicates(header.getConstrainedColumns(), constrainedColumns);
+        final List<StarColumnPredicate> nonGroupByPredicateList = constrainedColumnsToPredicates(header.getNonGroupByConstrainedColumns(), nonGroupByConstrainedColumns);
+
+        return new Segment(
+            star,
+            constrainedColumnsBitKey,
+            nonGroupByConstrainedColumnsBitKey,
+            constrainedColumns,
+            measure,
+            predicateList.toArray(
+                new StarColumnPredicate[predicateList.size()]),
+            nonGroupByPredicateList.toArray(
+                    new StarColumnPredicate[nonGroupByPredicateList.size()]),
+            new ExcludedRegionList(header),
+            compoundPredicates,
+            volaCompoundPredicates);
+    }
+
+    private static List<StarColumnPredicate> constrainedColumnsToPredicates(List<SegmentColumn> segmentColumns,
+            RolapStar.Column[] rolapStarColumns) {
         final List<StarColumnPredicate> predicateList =
             new ArrayList<StarColumnPredicate>();
-        for (int i = 0; i < constrainedColumns.length; i++) {
-            RolapStar.Column constrainedColumn = constrainedColumns[i];
+        for (int i = 0; i < rolapStarColumns.length; i++) {
+            RolapStar.Column constrainedColumn = rolapStarColumns[i];
             final SortedSet<Comparable> values =
-                header.getConstrainedColumns().get(i).values;
+                    segmentColumns.get(i).values;
             StarColumnPredicate predicate;
             if (values == null) {
                 predicate =
@@ -161,17 +183,7 @@ public class SegmentBuilder {
             }
             predicateList.add(predicate);
         }
-
-        return new Segment(
-            star,
-            constrainedColumnsBitKey,
-            constrainedColumns,
-            measure,
-            predicateList.toArray(
-                new StarColumnPredicate[predicateList.size()]),
-            new ExcludedRegionList(header),
-            compoundPredicates,
-            volaCompoundPredicates);
+        return predicateList;
     }
 
     private static List<Comparable> getColumnValsAtCellKey(
@@ -211,7 +223,11 @@ public class SegmentBuilder {
         Set<String> keepColumns,
         BitKey targetBitkey,
         Aggregator rollupAggregator,
-        Datatype datatype)
+        Datatype datatype,
+        List<String> nonGroupByPredicatesSQL,
+        BitKey nonGroupByConstrainedColumnsBitKey,
+        StarColumnPredicate[] nonGroupByPredicates,
+        RolapStar star)
     {
         class AxisInfo {
             SegmentColumn column;
@@ -223,6 +239,11 @@ public class SegmentBuilder {
             boolean lostPredicate;
         }
         assert allHeadersHaveSameDimensionality(map.keySet());
+        
+        final Map<String,StarColumnPredicate> nonGroupByPredicatesMap = new HashMap<String,StarColumnPredicate>();
+        for (StarColumnPredicate predicate : nonGroupByPredicates) {
+            nonGroupByPredicatesMap.put(predicate.getColumn().physColumn.toSql(), predicate);
+        }
 
         // store the map values in a list to assure the first header
         // loaded here is consistent w/ the first segment processed below.
@@ -330,25 +351,34 @@ public class SegmentBuilder {
 
         for (Map.Entry<SegmentHeader, SegmentBody> entry : map.entrySet()) {
             final int[] pos = new int[axes.length];
+            final SegmentHeader header = entry.getKey();
             final Comparable[][] valueArrays =
-                new Comparable[firstHeader.getConstrainedColumns().size()][];
+                new Comparable[header.getConstrainedColumns().size()][];
+            final StarColumnPredicate[] nonGroupByPredicatesLookUp =
+                    new StarColumnPredicate[header.getConstrainedColumns().size()];
             final SegmentBody body = entry.getValue();
 
             // Copy source value sets into arrays. For axes that are being
             // projected away, store null.
             z = 0;
             for (SortedSet<Comparable> set : body.getAxisValueSets()) {
-                valueArrays[z] = keepColumns.contains(
-                    firstHeader.getConstrainedColumns().get(z).columnExpression)
-                    ? set.toArray(new Comparable[set.size()])
+                String columnExp = header.getConstrainedColumns().get(z).columnExpression;
+                valueArrays[z] = keepColumns.contains(columnExp) ? 
+                    set.toArray(new Comparable[set.size()])
                     : null;
+                nonGroupByPredicatesLookUp[z] = nonGroupByPredicatesMap.get(columnExp);
                 ++z;
             }
             Map<CellKey, Object> v = body.getValueMap();
             entryLoop:
             for (Map.Entry<CellKey, Object> vEntry : v.entrySet()) {
+                List<Comparable> colValues =  getColumnValsAtCellKey(
+                        body, vEntry.getKey());
                 z = 0;
                 for (int i = 0; i < vEntry.getKey().size(); i++) {
+                    if (nonGroupByPredicatesLookUp[i] != null && !nonGroupByPredicatesLookUp[i].evaluate(colValues.get(i))) {
+                        continue entryLoop;
+                    }
                     final Comparable[] valueArray = valueArrays[i];
                     if (valueArray == null) {
                         continue;
@@ -381,8 +411,7 @@ public class SegmentBuilder {
                 if (!cellValues.containsKey(ck)) {
                     cellValues.put(ck, new ArrayList<Object>());
                 }
-                List<Comparable> colValues =  getColumnValsAtCellKey(
-                    body, vEntry.getKey());
+
                 if (!addedIntersections.contains(colValues)) {
                     // only add the cell value if we haven't already.
                     // there is a potential double add if segments overlap
@@ -537,9 +566,13 @@ public class SegmentBuilder {
                 firstHeader.cubeName,
                 firstHeader.measureName,
                 constrainedColumns,
+                SegmentBuilder.toConstrainedColumns(
+                        star.getFactTable().getRelation().getSchema().statistic, nonGroupByPredicates, null),
+                nonGroupByPredicatesSQL,
                 firstHeader.compoundPredicates,
                 firstHeader.rolapStarFactTableName,
                 targetBitkey,
+                nonGroupByConstrainedColumnsBitKey,
                 Collections.<SegmentColumn>emptyList());
         if (LOGGER.isDebugEnabled()) {
             StringBuilder builder = new StringBuilder();
@@ -730,11 +763,11 @@ public class SegmentBuilder {
             }
             ccs.add(
                 new SegmentColumn(
-                    baseColumns[i].getExpression().toSql(),
-                    statistic.getColumnCardinality(
+                    baseColumns != null ? baseColumns[i].getExpression().toSql() : predicate.getColumn().physColumn.toSql(),
+                    statistic != null ? statistic.getColumnCardinality(
                         predicate.getColumn().physColumn.relation,
                         predicate.getColumn().physColumn,
-                        -1),
+                        -1) : -1,
                     valueList));
         }
         return ccs;
@@ -764,6 +797,16 @@ public class SegmentBuilder {
             compoundPredicate.toSql(segment.star.getSqlQueryDialect(), buf);
             cp.add(buf.toString());
         }
+        final List<SegmentColumn> ngcc =
+                SegmentBuilder.toConstrainedColumns(
+                    statistic, segment.nonGroupByPredicates, null);
+        buf = new StringBuilder();
+        final List<String> ngp = new ArrayList<String>();
+        for (StarPredicate nonGroupByPredicate : segment.nonGroupByPredicates) {
+            buf.setLength(0);
+            nonGroupByPredicate.toSql(segment.star.getSqlQueryDialect(), buf);
+            ngp.add(buf.toString());
+        }
         final RolapSchema schema = segment.star.getSchema();
         return new SegmentHeader(
             schema.getName(),
@@ -771,9 +814,12 @@ public class SegmentBuilder {
             segment.measure.getCubeName(),
             segment.measure.getName(),
             cc,
+            ngcc,
+            ngp,
             cp,
             segment.star.getFactTable().getAlias(),
             segment.constrainedColumnsBitKey,
+            segment.nonGroupByConstrainedColumnsBitKey,
             Collections.<SegmentColumn>emptyList());
     }
 
@@ -833,9 +879,13 @@ public class SegmentBuilder {
                     header,
                     key.getStar(),
                     header.getConstrainedColumnsBitKey(),
+                    header.nonGroupByConstrainedColsBitKey,
                     getConstrainedColumns(
                         key.getStar(),
                         header.getConstrainedColumnsBitKey()),
+                    getConstrainedColumns(
+                            key.getStar(),
+                            header.nonGroupByConstrainedColsBitKey),
                     request.getMeasure(),
                     key.getCompoundPredicateList(),
                     key.getVolaCompoundPredicateList());
@@ -871,9 +921,13 @@ public class SegmentBuilder {
                     header,
                     measure.getStar(),
                     header.getConstrainedColumnsBitKey(),
+                    header.nonGroupByConstrainedColsBitKey,
                     getConstrainedColumns(
                         measure.getStar(),
                         header.getConstrainedColumnsBitKey()),
+                    getConstrainedColumns(
+                            measure.getStar(),
+                            header.nonGroupByConstrainedColsBitKey),
                     measure,
                     compoundPredicateList,
                     volaCompoundPredicateList);

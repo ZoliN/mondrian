@@ -1449,7 +1449,8 @@ public class SegmentCacheManager {
                         star.getFactTable().getAlias(),
                         request.getConstrainedColumnsBitKey(),
                         request.getMappedCellValues(),
-                        request.getCompoundPredicateStrings());
+                        request.getCompoundPredicateStrings(),
+                        request.getSubqueryNonGroupByPredicatesSQL());
 
 
             final Map<SegmentHeader, Future<SegmentBody>> headerMap =

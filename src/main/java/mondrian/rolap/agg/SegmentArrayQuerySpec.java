@@ -33,6 +33,7 @@ public class SegmentArrayQuerySpec extends AbstractQuerySpec {
      * Each list constrains one dimension.
      */
     private final List<StarPredicate> compoundPredicateList;
+    private final StarColumnPredicate[] nonGroupByPredicates;
 
     /**
      * Creates a SegmentArrayQuerySpec.
@@ -43,13 +44,15 @@ public class SegmentArrayQuerySpec extends AbstractQuerySpec {
      */
     public SegmentArrayQuerySpec(
         GroupingSetsList groupingSetsList,
-        List<StarPredicate> compoundPredicateList)
+        List<StarPredicate> compoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         super(groupingSetsList.getStar(), false);
         this.segments = groupingSetsList.getDefaultSegments();
         this.segment0 = segments.get(0);
         this.groupingSetsList = groupingSetsList;
         this.compoundPredicateList = compoundPredicateList;
+        this.nonGroupByPredicates = nonGroupByPredicates;
         assert isValid(true);
     }
 
@@ -118,11 +121,14 @@ public class SegmentArrayQuerySpec extends AbstractQuerySpec {
     }
 
     protected List<StarPredicate> getPredicateList() {
-        if (compoundPredicateList == null) {
-            return super.getPredicateList();
-        } else {
-            return compoundPredicateList;
+        List<StarPredicate> list = new ArrayList<StarPredicate>();
+        if (compoundPredicateList != null) {
+            list.addAll(compoundPredicateList);
         }
+        for (StarPredicate starPredicate : nonGroupByPredicates) {
+            list.add(starPredicate);
+        }
+        return list;
     }
 
     protected void addGroupingFunction(SqlQueryBuilder queryBuilder) {

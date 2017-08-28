@@ -227,7 +227,8 @@ public class AggregationManager extends RolapAggregationManager {
      */
     public static Pair<String, List<SqlStatement.Type>> generateSql(
         GroupingSetsList groupingSetsList,
-        List<StarPredicate> compoundPredicateList)
+        List<StarPredicate> compoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         final RolapStar star = groupingSetsList.getStar();
         BitKey levelBitKey = groupingSetsList.getDefaultLevelBitKey();
@@ -235,7 +236,7 @@ public class AggregationManager extends RolapAggregationManager {
 
         // Check if using aggregates is enabled.
         boolean hasCompoundPredicates = false;
-        if (compoundPredicateList != null && compoundPredicateList.size() > 0) {
+        if ((compoundPredicateList != null && compoundPredicateList.size() > 0) || nonGroupByPredicates.length>0) {
             // Do not use Aggregate tables if compound predicates are present.
             hasCompoundPredicates = true;
         }
@@ -319,7 +320,7 @@ public class AggregationManager extends RolapAggregationManager {
 
         // Fact table query
         SegmentArrayQuerySpec spec =
-            new SegmentArrayQuerySpec(groupingSetsList, compoundPredicateList);
+            new SegmentArrayQuerySpec(groupingSetsList, compoundPredicateList, nonGroupByPredicates);
 
         Pair<String, List<SqlStatement.Type>> pair =
             spec.generateSqlQuery("segment array");

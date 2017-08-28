@@ -308,7 +308,11 @@ public class FastBatchingCellReader implements CellReader {
                         keepColumns,
                         rollup.constrainedColumnsBitKey,
                         rollup.measure.getAggregator().getRollup(),
-                        rollup.measure.getDatatype());
+                        rollup.measure.getDatatype(),
+                        rollup.nonGroupByPredicatesSQL,
+                        rollup.nonGroupByConstrainedColumnsBitKey,
+                        rollup.nonGroupByPredicates,
+                        rollup.measure.getStar());
 
                 final SegmentHeader header = rollupHeaderBody.left;
                 final SegmentBody body = rollupHeaderBody.right;
@@ -610,12 +614,16 @@ class BatchLoader {
             request.getMappedCellValues();
         final List<String> compoundPredicates =
                 request.getCompoundPredicateStrings();
+        final List<String> nonGroupByPredicates =
+                request.getSubqueryNonGroupByPredicatesSQL();
+
 
         for (SegmentHeader header : cacheHeaders) {
             if (SegmentCacheIndexImpl.matches(
                     header,
                     mappedCellValues,
-                    compoundPredicates))
+                    compoundPredicates,
+                    nonGroupByPredicates))
             {
                 // It's likely that the header will be in the cache, so this
                 // request will be satisfied. If not, the header will be removed
@@ -637,7 +645,8 @@ class BatchLoader {
                 star.getFactTable().getAlias(),
                 request.getConstrainedColumnsBitKey(),
                 mappedCellValues,
-                compoundPredicates);
+                compoundPredicates,
+                request.getSubqueryNonGroupByPredicatesSQL());
 
         // Ask for the first segment to be loaded from cache. (If it's no longer
         // in cache, we'll be back, and presumably we'll try the second
@@ -705,12 +714,16 @@ class BatchLoader {
                     star.getFactTable().getAlias(),
                     request.getConstrainedColumnsBitKey(),
                     mappedCellValues,
-                    request.getCompoundPredicateStrings());
+                    request.getCompoundPredicateStrings(),
+                    request.getSubqueryNonGroupByPredicatesSQL(),
+                    request.getNonGroupByConstrainedColumnsBitKey(),
+                    key.getNonGroupByPredicates());
             if (!rollup.isEmpty()) {
                 rollups.add(
                     new RollupInfo(
                         request,
-                        rollup));
+                        rollup,
+                        key.getNonGroupByPredicates()));
                 rollupBitmaps.add(request.getConstrainedColumnsBitKey());
                 converterMap.put(
                     SegmentCacheIndexImpl.makeConverterKey(request, key),
@@ -1069,6 +1082,7 @@ class BatchLoader {
                 batchCollector.getGroupingSets(),
                 detailedBatch.batchKey.getCompoundPredicateList(),
                 detailedBatch.batchKey.getVolaCompoundPredicateList(),
+                detailedBatch.batchKey.getNonGroupByPredicates(),
                 segmentFutures);
         }
 
@@ -1088,15 +1102,23 @@ class BatchLoader {
         final BitKey constrainedColumnsBitKey;
         final RolapStar.Measure measure;
         final List<List<SegmentHeader>> candidateLists;
-
+        final List<String> nonGroupByPredicatesSQL;
+        final BitKey nonGroupByConstrainedColumnsBitKey;
+        final StarColumnPredicate[] nonGroupByPredicates;
+        
         RollupInfo(
             CellRequest request,
-            List<List<SegmentHeader>> candidateLists)
+            List<List<SegmentHeader>> candidateLists,
+            StarColumnPredicate[] nonGroupByPredicates)
         {
             this.candidateLists = candidateLists;
             constrainedColumns = request.getConstrainedColumns();
             constrainedColumnsBitKey = request.getConstrainedColumnsBitKey();
             measure = request.getMeasure();
+            this.nonGroupByPredicates = nonGroupByPredicates;
+            this.nonGroupByPredicatesSQL = request.getSubqueryNonGroupByPredicatesSQL();
+            this.nonGroupByConstrainedColumnsBitKey = request.getNonGroupByConstrainedColumnsBitKey();
+            
         }
     }
 
@@ -1764,7 +1786,7 @@ class BatchLoader {
          * @return Rolled up batch, or null if roll up is not possible
          */
         public Batch pullUp(RolapGalaxy galaxy) {
-            if (!batchKey.getCompoundPredicateList().isEmpty()) {
+            if (!batchKey.getCompoundPredicateList().isEmpty() || batchKey.getNonGroupByPredicates().length>0) {
                 return null;
             }
             final RolapStar star = getStar();
@@ -1809,9 +1831,11 @@ class BatchLoader {
                     reverseConverter.convertPredicateSets(valueSets),
                     new AggregationKey(
                         newBitKey,
+                        null,
                         newStar,
                         Collections.<StarPredicate>emptyList(),
-                        Collections.<StarPredicate>emptyList()));
+                        Collections.<StarPredicate>emptyList(),
+                        null));
             for (RolapStar.Measure measure : measuresList) {
                 newBatch.measuresList.add(
                     (RolapStar.Measure)

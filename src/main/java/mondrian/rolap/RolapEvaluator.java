@@ -18,6 +18,10 @@ import mondrian.calc.TupleList;
 import mondrian.calc.impl.DelegatingTupleList;
 import mondrian.olap.*;
 import mondrian.olap.fun.*;
+import mondrian.rolap.agg.CellRequest;
+import mondrian.rolap.agg.ListColumnPredicate;
+import mondrian.rolap.agg.OrPredicate;
+import mondrian.rolap.agg.ListPredicate;
 import mondrian.server.Statement;
 import mondrian.spi.Dialect;
 import mondrian.util.*;
@@ -96,8 +100,21 @@ public class RolapEvaluator implements Evaluator {
     
     protected CompoundPredicateInfo slicerPredicateInfo;
     protected HashMap<RolapMeasureGroup,HashMap<StarPredicate,CompoundPredicateInfo>> subQueryPredicateInfoMap = new HashMap<RolapMeasureGroup,HashMap<StarPredicate,CompoundPredicateInfo>>();
-    protected HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>> subQueryPredicatesForRequest = new HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>>();
 
+    /**
+     * Coumpound subquery predicates
+     */
+    protected HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>> compoundSubQueryPredicates = new HashMap<RolapMeasureGroup,Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>>>();
+
+    /**
+     * Subquery predicates which only contain a single column.
+     */
+    protected HashMap<RolapMeasureGroup,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>> simpleSubQueryPredicates = new HashMap<RolapMeasureGroup,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>>();
+
+    /**
+     * Subquery predicates which only contain a single column which is not contrained by cellrequest (it is not in the group by list).
+     */
+    protected HashMap<RolapMeasureGroup,HashMap<BitKey,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>>> simpleNonGroupBySubQueryPredicates = new HashMap<RolapMeasureGroup,HashMap<BitKey,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>>>();
     
     
     private final List<RolapMember> slicerMembers;
@@ -168,27 +185,99 @@ public class RolapEvaluator implements Evaluator {
         return predicateInfos;
     }
 
-    public Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> getSubQueryCompoundPredicates(RolapStoredMeasure measure) {
-        Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> compoundPredicates = subQueryPredicatesForRequest.get(measure.getMeasureGroup());
-        if ( compoundPredicates == null ) {
+    public boolean applyCompoundSubQueryPredicates(RolapStoredMeasure measure, CellRequest request) {
+        Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> compoundPredicates = compoundSubQueryPredicates.get(measure.getMeasureGroup());
+
+        if ( compoundPredicates == null /*|| simplePredicates == null*/) {
             compoundPredicates = Pair.of(new TreeMap<BitKey, StarPredicate>(),new ArrayList<String>());
             HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = getSubQueryPredicateInfo(measure);
             for (CompoundPredicateInfo predicateInfo : predicateInfos.values()) {
                 if (!predicateInfo.isSatisfiable()) {
-                    return null;
+                    return false;
                 }
                 if (predicateInfo.getPredicate() != null) {
-                    compoundPredicates.left.put(
-                        predicateInfo.getBitKey(), predicateInfo.getPredicate());
+                    if (predicateInfo.getBitKey().cardinality() > 1) {
+                        compoundPredicates.left.put(
+                                predicateInfo.getBitKey(), predicateInfo.getPredicate());
+                    }
                 }
             }
             for (StarPredicate predicate : compoundPredicates.left.values()) {
                 compoundPredicates.right.add(
                         predicateInfos.get(predicate).getPredicateString());
             }
-            subQueryPredicatesForRequest.put(measure.getMeasureGroup(), compoundPredicates);
+            compoundSubQueryPredicates.put(measure.getMeasureGroup(), compoundPredicates);
+
         }
-        return compoundPredicates;
+        request.setNonVolaCompoundPredicates(compoundPredicates.left,compoundPredicates.right);
+        return true;
+    }
+
+    public boolean applySimpleSubQueryPredicates(RolapStoredMeasure measure, CellRequest request) {
+        Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>> predicates = simpleSubQueryPredicates.get(measure.getMeasureGroup());
+           
+        if (predicates == null /*|| simplePredicates == null*/) {
+            predicates = Pair.of(new TreeMap<Integer, ListColumnPredicate>(),new ArrayList<String>());
+            HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = getSubQueryPredicateInfo(measure);
+            for (CompoundPredicateInfo predicateInfo : predicateInfos.values()) {
+                if (!predicateInfo.isSatisfiable()) {
+                    return false;
+                }
+                if (predicateInfo.getPredicate() != null) {
+                    if (predicateInfo.getBitKey().cardinality() == 1) {
+                        predicates.left.put(
+                            predicateInfo.getBitKey().nextSetBit(0), (ListColumnPredicate)predicateInfo.getPredicate());
+                    }
+                }
+            }
+            for (StarPredicate predicate : predicates.left.values()) {
+                predicates.right.add(
+                        predicateInfos.get(predicate).getPredicateString());
+            }
+            simpleSubQueryPredicates.put(measure.getMeasureGroup(), predicates);        
+        }
+        request.setSubqueryPredicates(predicates.left);
+        return true;
+    }
+    
+    public boolean applySimpleNonGroupBySubQueryPredicates(RolapStoredMeasure measure, CellRequest request) {
+        BitKey requestBitKey = request.getConstrainedColumnsBitKey();
+
+        HashMap<BitKey,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>> nonGroupByPredicatesMap = simpleNonGroupBySubQueryPredicates.get(measure.getMeasureGroup());
+        Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>> nonGroupByPredicates;
+        if (nonGroupByPredicatesMap == null) {
+            nonGroupByPredicatesMap = new HashMap<BitKey,Pair<TreeMap<Integer, ListColumnPredicate>,ArrayList<String>>>();
+            nonGroupByPredicates = null;
+        } else {
+            nonGroupByPredicates = nonGroupByPredicatesMap.get(requestBitKey);
+        }
+        
+        if ( nonGroupByPredicates == null /*|| simplePredicates == null*/) {
+            nonGroupByPredicates = Pair.of(new TreeMap<Integer, ListColumnPredicate>(),new ArrayList<String>());
+            HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = getSubQueryPredicateInfo(measure);
+            for (CompoundPredicateInfo predicateInfo : predicateInfos.values()) {
+                if (!predicateInfo.isSatisfiable()) {
+                    return false;
+                }
+                if (predicateInfo.getPredicate() != null) {
+                    if (predicateInfo.getBitKey().cardinality() == 1) {
+                        if (predicateInfo.getBitKey().cardinality() == 1 && !requestBitKey.isSuperSetOf(predicateInfo.getBitKey())) {
+                            nonGroupByPredicates.left.put(
+                                predicateInfo.getBitKey().nextSetBit(0), (ListColumnPredicate)predicateInfo.getPredicate());
+                        }
+                    }
+                }
+            }
+            for (StarPredicate predicate : nonGroupByPredicates.left.values()) {
+                nonGroupByPredicates.right.add(
+                        predicateInfos.get(predicate).getPredicateString());
+            }
+            nonGroupByPredicatesMap.put(requestBitKey, nonGroupByPredicates);
+            simpleNonGroupBySubQueryPredicates.put(measure.getMeasureGroup(), nonGroupByPredicatesMap);  
+        }
+
+        request.setSubqueryNonGroupByPredicates(nonGroupByPredicates.left, nonGroupByPredicates.right);
+        return true;
     }
     
     /**
@@ -620,7 +709,7 @@ public class RolapEvaluator implements Evaluator {
      * Return the list of compound slicer tuples
      */
     public final List<TupleList> getSubQueryTuples() {
-        return subQueryTuples;
+        return subQueryTuples != null ? subQueryTuples : Collections.<TupleList>emptyList();
     }
 
 

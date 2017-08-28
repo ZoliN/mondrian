@@ -116,9 +116,9 @@ public abstract class RolapAggregationManager {
         }
         
         if (evaluator.getSubQueryTuples().size() != 0) {
-            if (!applySubQueryPredicates(evaluator, request)) {
-
-
+            final RolapStoredMeasure measure = (RolapStoredMeasure)evaluator.getNonAllMembers()[0];
+            if (!evaluator.applyCompoundSubQueryPredicates(measure, request) || 
+                    !evaluator.applySimpleNonGroupBySubQueryPredicates(measure, request)) {
                 // unsatisfiable
                 return null;
             }
@@ -193,18 +193,6 @@ public abstract class RolapAggregationManager {
         }
         return predicateInfo;
     }
-
-    private static boolean applySubQueryPredicates(
-            RolapEvaluator evaluator, CellRequest request)
-    {
-        final Member[] currentMembers = evaluator.getNonAllMembers();
-        Pair<TreeMap<BitKey, StarPredicate>,ArrayList<String>> compoundPredicates = evaluator.getSubQueryCompoundPredicates((RolapStoredMeasure)currentMembers[0]);
-        if (compoundPredicates == null) return false;
-        request.setNonVolaCompoundPredicates(compoundPredicates.left,compoundPredicates.right);
-
-        return true;
-    }
-
     
     private static CellRequest makeCellRequest(
         final Member[] members,
@@ -212,7 +200,7 @@ public abstract class RolapAggregationManager {
         final boolean extendedContext,
         RolapCube cube,
         List<Exp> fieldsList,
-        Evaluator evaluator)
+        RolapEvaluator evaluator)
     {
         if (extendedContext) {
             assert drillThrough;
@@ -248,6 +236,14 @@ public abstract class RolapAggregationManager {
             // For each member in the evaluator, we constrain the request.
             CellRequest request =
                 new CellRequest(starMeasure, extendedContext, drillThrough);
+            if (evaluator != null && evaluator.getSubQueryTuples().size() != 0) {
+                if (!evaluator.applySimpleSubQueryPredicates(measure, request)) {
+                    // unsatisfiable
+                    return null;
+                }
+            } else {
+                request.initEmptySubquery();
+            }
             for (int i = 1; i < members.length; i++) {
                 RolapMember member = (RolapMember)members[i];
                 if (

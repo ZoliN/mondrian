@@ -46,6 +46,8 @@ public class AggregationKey
     private final RolapStar star;
 
     private final BitKey constrainedColumnsBitKey;
+    
+    private final BitKey nonGroupByConstrainedColumnsBitKey;
 
     /**
      * List of StarPredicate (representing the predicate
@@ -59,6 +61,9 @@ public class AggregationKey
     
     final List<StarPredicate> volaCompoundPredicateList;
     
+    final StarColumnPredicate[] nonGroupByPredicates;
+    
+
 
     private int hashCode;
 
@@ -67,14 +72,18 @@ public class AggregationKey
      */
     public AggregationKey(
         BitKey constrainedColumnsBitKey,
+        BitKey nonGroupByConstrainedColumnsBitKey,
         RolapStar star,
         List<StarPredicate> compoundPredicateList,
-        List<StarPredicate> volaCompoundPredicateList)
+        List<StarPredicate> volaCompoundPredicateList,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         this.constrainedColumnsBitKey = constrainedColumnsBitKey;
+        this.nonGroupByConstrainedColumnsBitKey = nonGroupByConstrainedColumnsBitKey == null ? BitKey.Factory.makeBitKey(0) : nonGroupByConstrainedColumnsBitKey;
         this.star = star;
         this.compoundPredicateList = compoundPredicateList;
         this.volaCompoundPredicateList = volaCompoundPredicateList == null ? Collections.<StarPredicate>emptyList() : volaCompoundPredicateList;
+        this.nonGroupByPredicates = nonGroupByPredicates == null ? new StarColumnPredicate[0] : nonGroupByPredicates;
     }
 
     /**
@@ -87,15 +96,24 @@ public class AggregationKey
             request.getCompoundPredicateMap();
         Map<BitKey, StarPredicate> volaCompoundPredicateMap =
             request.getVolaCompoundPredicateMap();
+        TreeMap<Integer, ListColumnPredicate> nonGroupByPredicates =
+            request.getSubqueryNonGroupByPredicates();
+        
         return new AggregationKey(
             request.getConstrainedColumnsBitKey(),
+            request.getNonGroupByConstrainedColumnsBitKey(),
             request.getMeasure().getStar(),
             compoundPredicateMap == null
                 ? Collections.<StarPredicate>emptyList()
                 : new ArrayList<StarPredicate>(compoundPredicateMap.values()),
             volaCompoundPredicateMap == null
                 ? null
-                : new ArrayList<StarPredicate>(volaCompoundPredicateMap.values()));
+                : new ArrayList<StarPredicate>(volaCompoundPredicateMap.values()),
+            nonGroupByPredicates == null
+                ? null
+                : new ArrayList<StarColumnPredicate>(nonGroupByPredicates.values())
+                    .toArray(new StarColumnPredicate[nonGroupByPredicates.size()])
+                );
     }
 
     public final int computeHashCode() {
@@ -113,17 +131,20 @@ public class AggregationKey
                     public int size() {
                         return compoundPredicateList.size();
                     }
-                });
+                },
+            nonGroupByConstrainedColumnsBitKey);
     }
 
     public static int computeHashCode(
         BitKey constrainedColumnsBitKey,
         RolapStar star,
-        Collection<BitKey> compoundPredicateBitKeys)
+        Collection<BitKey> compoundPredicateBitKeys,
+        BitKey nonGroupByConstrainedColumnsBitKey)
     {
         int retCode = constrainedColumnsBitKey.hashCode();
         retCode = Util.hash(retCode, star);
-        return Util.hash(retCode, compoundPredicateBitKeys);
+        retCode = Util.hash(retCode, compoundPredicateBitKeys);
+        return Util.hash(retCode, nonGroupByConstrainedColumnsBitKey);
     }
 
     public int hashCode() {
@@ -142,7 +163,9 @@ public class AggregationKey
         final AggregationKey that = (AggregationKey) other;
         return constrainedColumnsBitKey.equals(that.constrainedColumnsBitKey)
             && star.equals(that.star)
-            && equal(compoundPredicateList, that.compoundPredicateList);
+            && nonGroupByConstrainedColumnsBitKey.equals(that.nonGroupByConstrainedColumnsBitKey)
+            && equal(compoundPredicateList, that.compoundPredicateList)
+            && equal(nonGroupByPredicates, that.nonGroupByPredicates);
     }
 
     /**
@@ -175,7 +198,36 @@ public class AggregationKey
         }
         return true;
     }
-
+    
+    /**
+     * Returns whether two lists of starcolumnpredicates are equal.
+     *
+     * @param list1 First predicate array
+     * @param list2 Second predicate array
+     * @return Whether predicate arrays are equal
+     */
+    static boolean equal(
+        final StarColumnPredicate[] list1,
+        final StarColumnPredicate[] list2)
+    {
+        if (list1 == null) {
+            return list2 == null;
+        }
+        if (list2 == null) {
+            return false;
+        }
+        final int length = list1.length;
+        if (length != list2.length) {
+            return false;
+        }
+        for (int i = 0; i < length; i++) {
+            if (!list1[i].equalConstraint(list2[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
     public String toString() {
         return
             star.getFactTable().getTableName()
@@ -183,7 +235,11 @@ public class AggregationKey
             + "\n"
             + (compoundPredicateList == null
                 ? "{}"
-                : compoundPredicateList.toString());
+                : compoundPredicateList.toString())
+            + "\n"
+            + (nonGroupByPredicates == null
+                ? "{}"
+                : nonGroupByPredicates.toString());
     }
 
     /**
@@ -195,6 +251,10 @@ public class AggregationKey
         return constrainedColumnsBitKey;
     }
 
+    public final BitKey getNonGroupByConstrainedColumnsBitKey() {
+        return nonGroupByConstrainedColumnsBitKey;
+    }
+    
     /**
      * Returns the star.
      *
@@ -221,6 +281,11 @@ public class AggregationKey
     public List<StarPredicate> getVolaCompoundPredicateList() {
         return volaCompoundPredicateList;
     }
+    
+    public StarColumnPredicate[] getNonGroupByPredicates() {
+        return nonGroupByPredicates;
+    }
+
 }
 
 // End AggregationKey.java

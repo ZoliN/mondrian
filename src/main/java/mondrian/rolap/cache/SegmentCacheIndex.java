@@ -10,6 +10,7 @@
 package mondrian.rolap.cache;
 
 import mondrian.rolap.BitKey;
+import mondrian.rolap.StarColumnPredicate;
 import mondrian.rolap.agg.SegmentBuilder;
 import mondrian.server.Execution;
 import mondrian.spi.*;
@@ -50,7 +51,8 @@ public interface SegmentCacheIndex {
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
         Map<String, Comparable> coordinates,
-        List<String> compoundPredicates);
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicates);
 
     /**
      * Returns a list of segments that can be rolled up to satisfy a given
@@ -76,7 +78,10 @@ public interface SegmentCacheIndex {
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
         Map<String, Comparable> coordinates,
-        List<String> compoundPredicates);
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicatesSQL,
+        BitKey nonGroupByConstrainedColumnsBitKey,
+        StarColumnPredicate[] nonGroupByPredicates);
 
     /**
      * Finds a list of headers that intersect a given region.

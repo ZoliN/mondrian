@@ -13,6 +13,7 @@ import mondrian.olap.QueryCanceledException;
 import mondrian.olap.Util;
 import mondrian.rolap.BitKey;
 import mondrian.rolap.RolapUtil;
+import mondrian.rolap.StarColumnPredicate;
 import mondrian.rolap.agg.*;
 import mondrian.server.Execution;
 import mondrian.spi.*;
@@ -42,6 +43,9 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
     private final Map<List, List<SegmentHeader>> bitkeyMap =
         new HashMap<List, List<SegmentHeader>>();
 
+    private final Map<List, List<SegmentHeader>> bitkeyMapWONonGroupBy =
+            new HashMap<List, List<SegmentHeader>>();
+    
     /**
      * The fact map allows us to spot quickly which
      * segments have facts relating to a given header.
@@ -106,7 +110,8 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
         Map<String, Comparable> coordinates,
-        List<String> compoundPredicates)
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicates)
     {
         checkThread();
 
@@ -122,7 +127,8 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
                 + "\nrolapStarFactTableName:" + rolapStarFactTableName
                 + "\nconstrainedColsBitKey:" + constrainedColsBitKey
                 + "\ncoordinates:" + coordinates
-                + "\ncompoundPredicates:" + compoundPredicates);
+                + "\ncompoundPredicates:" + compoundPredicates
+                + "\nonGroupByPredicates:" + nonGroupByPredicates);
         }
 
         List<SegmentHeader> list = Collections.emptyList();
@@ -134,7 +140,8 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
                 rolapStarFactTableName,
                 constrainedColsBitKey,
                 measureName,
-                compoundPredicates);
+                compoundPredicates,
+                nonGroupByPredicates);
         final List<SegmentHeader> headerList = bitkeyMap.get(starKey);
         if (headerList == null) {
             LOGGER.trace(
@@ -144,7 +151,7 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             return Collections.emptyList();
         }
         for (SegmentHeader header : headerList) {
-            if (matches(header, coordinates, compoundPredicates)) {
+            if (matches(header, coordinates, compoundPredicates,nonGroupByPredicates)) {
                 // Be lazy. Don't allocate a list unless there is at least one
                 // entry.
                 if (list.isEmpty()) {
@@ -200,6 +207,16 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             headerList.add(header);
         }
 
+        final List bitkeyKeyWONonGroupBy = makeBitkeyKeyWONonGroupBy(header);
+        List<SegmentHeader> headerListWONonGroupBy = bitkeyMapWONonGroupBy.get(bitkeyKeyWONonGroupBy);
+        if (headerListWONonGroupBy == null) {
+            headerListWONonGroupBy = new ArrayList<SegmentHeader>();
+            bitkeyMapWONonGroupBy.put(bitkeyKeyWONonGroupBy, headerListWONonGroupBy);
+        }
+        if (!headerListWONonGroupBy.contains(header)) {
+            headerListWONonGroupBy.add(header);
+        }
+        
         final List factKey = makeFactKey(header);
         FactInfo factInfo = factMap.get(factKey);
         if (factInfo == null) {
@@ -243,11 +260,15 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
         final HeaderInfo headerInfo = headerMap.get(oldHeader);
         headerMap.remove(oldHeader);
         headerMap.put(newHeader, headerInfo);
-
+        
         final List oldBitkeyKey = makeBitkeyKey(oldHeader);
         List<SegmentHeader> headerList = bitkeyMap.get(oldBitkeyKey);
         headerList.remove(oldHeader);
         headerList.add(newHeader);
+        final List oldBitkeyKeyWONonGroupBy = makeBitkeyKeyWONonGroupBy(oldHeader);
+        List<SegmentHeader> headerListWONonGroupBy = bitkeyMapWONonGroupBy.get(oldBitkeyKeyWONonGroupBy);
+        headerListWONonGroupBy.remove(oldHeader);
+        headerListWONonGroupBy.add(newHeader);
 
         final List oldFactKey = makeFactKey(oldHeader);
         final FactInfo factInfo = factMap.get(oldFactKey);
@@ -348,12 +369,18 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
                 fuzzyFactMap.remove(fuzzyFactKey);
             }
         }
-
+        
         final List bitkeyKey = makeBitkeyKey(header);
         final List<SegmentHeader> headerList = bitkeyMap.get(bitkeyKey);
         headerList.remove(header);
         if (headerList.size() == 0) {
             bitkeyMap.remove(bitkeyKey);
+        }
+        final List bitkeyKeyWONonGroupBy = makeBitkeyKeyWONonGroupBy(header);
+        final List<SegmentHeader> headerListWONonGroupBy = bitkeyMapWONonGroupBy.get(bitkeyKeyWONonGroupBy);
+        headerListWONonGroupBy.remove(header);
+        if (headerListWONonGroupBy.size() == 0) {
+            bitkeyMapWONonGroupBy.remove(bitkeyKeyWONonGroupBy);
         }
     }
 
@@ -365,9 +392,10 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
     public static boolean matches(
         SegmentHeader header,
         Map<String, Comparable> coords,
-        List<String> compoundPredicates)
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicates)
     {
-        if (!header.compoundPredicates.equals(compoundPredicates)) {
+        if (!header.compoundPredicates.equals(compoundPredicates) || !header.nonGroupByConstrainedColumnsSQL.equals(nonGroupByPredicates)) {
             return false;
         }
         for (Map.Entry<String, Comparable> entry : coords.entrySet()) {
@@ -622,9 +650,20 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             header.rolapStarFactTableName,
             header.constrainedColsBitKey,
             header.measureName,
+            header.compoundPredicates,
+            header.nonGroupByConstrainedColumnsSQL);
+    }
+    private List makeBitkeyKeyWONonGroupBy(SegmentHeader header) {
+        return makeBitkeyKeyWONonGroupBy(
+            header.schemaName,
+            header.schemaChecksum,
+            header.cubeName,
+            header.rolapStarFactTableName,
+            header.constrainedColsBitKey,
+            header.measureName,
             header.compoundPredicates);
     }
-
+    
     private List makeBitkeyKey(
         String schemaName,
         ByteString schemaChecksum,
@@ -632,7 +671,8 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
         String measureName,
-        List<String> compoundPredicates)
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicates)
     {
         return Arrays.asList(
             schemaName,
@@ -641,9 +681,29 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             rolapStarFactTableName,
             constrainedColsBitKey,
             measureName,
-            compoundPredicates);
+            compoundPredicates,
+            nonGroupByPredicates);
     }
 
+    private List makeBitkeyKeyWONonGroupBy(
+            String schemaName,
+            ByteString schemaChecksum,
+            String cubeName,
+            String rolapStarFactTableName,
+            BitKey constrainedColsBitKey,
+            String measureName,
+            List<String> compoundPredicates)
+        {
+            return Arrays.asList(
+                schemaName,
+                schemaChecksum,
+                cubeName,
+                rolapStarFactTableName,
+                constrainedColsBitKey,
+                measureName,
+                compoundPredicates);
+        }
+    
     private List makeFactKey(SegmentHeader header) {
         return makeFactKey(
             header.schemaName,
@@ -703,7 +763,10 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
         String rolapStarFactTableName,
         BitKey constrainedColsBitKey,
         Map<String, Comparable> coordinates,
-        List<String> compoundPredicates)
+        List<String> compoundPredicates,
+        List<String> nonGroupByPredicatesSQL,
+        BitKey nonGroupByConstrainedColumnsBitKey,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         final List factKey = makeFactKey(
             schemaName,
@@ -729,7 +792,7 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
         final List<BitKey> ancestors =
             factInfo.bitkeyPoset.getAncestors(constrainedColsBitKey);
         for (BitKey bitKey : ancestors) {
-            final List bitkeyKey = makeBitkeyKey(
+            final List bitkeyKey = makeBitkeyKeyWONonGroupBy(
                 schemaName,
                 schemaChecksum,
                 cubeName,
@@ -737,15 +800,45 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
                 bitKey,
                 measureName,
                 compoundPredicates);
-            final List<SegmentHeader> headers = bitkeyMap.get(bitkeyKey);
+            final List<SegmentHeader> headers = bitkeyMapWONonGroupBy.get(bitkeyKey);
             assert headers != null : "bitkeyPoset / bitkeyMap inconsistency";
+            List<SegmentHeader> headersFiltered = new ArrayList<SegmentHeader>();
+            headerLoop:
+            for (SegmentHeader header : headers) {
+                if (header.nonGroupByConstrainedColumnsSQL.size() <= nonGroupByPredicatesSQL.size()) {
+                    int i = 0;
+                    for (int bitIndex : nonGroupByConstrainedColumnsBitKey) {
+                        if (header.nonGroupByConstrainedColsBitKey.get(bitIndex) ) {
+                            int j = 0;
+                            for (int bitIndex2 : header.nonGroupByConstrainedColsBitKey) {
+                                if (bitIndex == bitIndex2) {
+                                    if (!nonGroupByPredicatesSQL.get(i).equals(header.nonGroupByConstrainedColumnsSQL.get(j))) {
+                                        continue headerLoop;
+                                    } else break;
+                                }
+                                j++;
+                            }
+                        } else if (!header.constrainedColsBitKey.get(bitIndex)) {
+                            continue headerLoop;
+                        }
+                        i++;
+                    }
+                    for (int bitIndex : header.nonGroupByConstrainedColsBitKey) {
+                        if (!nonGroupByConstrainedColumnsBitKey.get(bitIndex) ) {
+                            continue headerLoop;
+                        }
+                    }
+                    headersFiltered.add(header);
+                }
+            }
 
             // For columns that are still present after roll up, make sure that
             // the required value is in the range covered by the segment.
             // Of the columns that are being aggregated away, are all of
             // them wildcarded? If so, this segment is a match. If not, we
             // will need to combine with other segments later.
-            findRollupCandidatesAmong(coordinates, list, headers);
+            findRollupCandidatesAmong(coordinates, list, headersFiltered,nonGroupByConstrainedColumnsBitKey,
+                    nonGroupByPredicates);
         }
         return list;
     }
@@ -803,7 +896,9 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
     private void findRollupCandidatesAmong(
         Map<String, Comparable> coordinates,
         List<List<SegmentHeader>> list,
-        List<SegmentHeader> headers)
+        List<SegmentHeader> headers,
+        BitKey nonGroupByConstrainedColumnsBitKey,
+        StarColumnPredicate[] nonGroupByPredicates)
     {
         final List<Pair<SegmentHeader, List<SegmentColumn>>> matchingHeaders =
             new ArrayList<Pair<SegmentHeader, List<SegmentColumn>>>();
@@ -818,9 +913,11 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
 
             List<SegmentColumn> nonWildcards =
                 new ArrayList<SegmentColumn>();
+            int bitIndex = 0;
             for (SegmentColumn column : header.getConstrainedColumns()) {
                 final SegmentColumn constrainedColumn =
                     header.getConstrainedColumn(column.columnExpression);
+                bitIndex = header.constrainedColsBitKey.nextSetBit(bitIndex);
 
                 // REVIEW: How are null key values represented in coordinates?
                 // Assuming that they are represented by null ref.
@@ -842,7 +939,24 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
                     // to be wildcarded (or some more complicated conditions
                     // to be dealt with later).
                     if (constrainedColumn.values != null) {
-                        nonWildcards.add(constrainedColumn);
+                        if (nonGroupByConstrainedColumnsBitKey.get(bitIndex)) {
+                            int i = 0;
+                            forouter:
+                            for (int bitIndex2 : nonGroupByConstrainedColumnsBitKey) {
+                                if (bitIndex == bitIndex2) {
+                                    for (StarColumnPredicate predicate : ((ListColumnPredicate)nonGroupByPredicates[i]).getPredicates()) {
+                                        if (!constrainedColumn.values.contains(((ValueColumnPredicate)predicate).getValue())) {
+                                            nonWildcards.add(constrainedColumn);
+                                            break forouter;
+                                        }
+                                    }
+                                    break;
+                                }
+                                i++;
+                            }
+                        } else {
+                            nonWildcards.add(constrainedColumn);
+                        }
                     }
                 }
             }
@@ -926,7 +1040,22 @@ public class SegmentCacheIndexImpl implements SegmentCacheIndex {
             // Is the number of values discovered equal to the known cardinality
             // of the column? If not, we can't cover the space.
             if (valueMap.size() < column.valueCount) {
-                return;
+                boolean satisfyNonGroupByPredicates = false;
+                forouter:
+                for (StarColumnPredicate c : nonGroupByPredicates) {
+                    if (c.getColumn().physColumn.toSql().equals(column.columnExpression)) {
+                        for (StarColumnPredicate predicate : ((ListColumnPredicate)c).getPredicates()) {
+                            if (!valueMap.containsKey(((ValueColumnPredicate)predicate).getValue())) {
+                                break forouter;
+                            }
+                        }
+                        satisfyNonGroupByPredicates = true;
+                        break;
+                    }
+                }
+                if (!satisfyNonGroupByPredicates) {
+                    return;
+                }
             }
 
             // Build equivalence sets of values. These group together values
