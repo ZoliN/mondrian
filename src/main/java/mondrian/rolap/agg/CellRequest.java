@@ -265,14 +265,31 @@ public class CellRequest {
             compoundPredicateStrings = new ArrayList<String>(compoundPredicateStrings);
             noVolaCompoundPredicateAdded = false;
         }
-        compoundPredicateMap.put(compoundBitKey, compoundPredicate);
-        int i = 0;
-        for (StarPredicate predicate : compoundPredicateMap.values()) {
-            if (predicate == compoundPredicate) {
-                compoundPredicateStrings.add(i, predicateString);
+        StarPredicate existingCP = compoundPredicateMap.get(compoundBitKey);
+        if (existingCP == null) {
+            compoundPredicateMap.put(compoundBitKey, compoundPredicate);
+            int i = 0;
+            for (StarPredicate predicate : compoundPredicateMap.values()) {
+                if (predicate == compoundPredicate) {
+                    compoundPredicateStrings.add(i, predicateString);
+                }
+                i++;
             }
-            i++;
+        } else {
+            StarPredicate andedCP = compoundPredicate.and(existingCP);
+            compoundPredicateMap.put(compoundBitKey, andedCP);
+            int i = 0;
+            for (StarPredicate predicate : compoundPredicateMap.values()) {
+                if (predicate == andedCP) {
+                    final StringBuilder buf = new StringBuilder();
+                    buf.setLength(0);
+                    andedCP.toSql(star.getSqlQueryDialect(), buf);
+                    compoundPredicateStrings.set(i, buf.toString());
+                }
+                i++;
+            }
         }
+
 
         if (volaCompoundPredicateMap == null) {
             volaCompoundPredicateMap = new TreeMap<BitKey, StarPredicate>();

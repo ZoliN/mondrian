@@ -9,6 +9,7 @@
 */
 package mondrian.rolap.agg;
 
+import mondrian.olap.Member;
 import mondrian.olap.Util;
 import mondrian.rolap.*;
 import mondrian.spi.Dialect;
@@ -313,6 +314,25 @@ public class ListColumnPredicate extends AbstractColumnPredicate {
         }
     }
 
+    
+    public StarPredicate and(StarPredicate predicate) {
+        if (predicate instanceof ListColumnPredicate) {
+            ListColumnPredicate listPredicate = (ListColumnPredicate)predicate;
+            if (this.values!=null && listPredicate.values != null) {
+                List<StarColumnPredicate> starColPredList = new ArrayList<StarColumnPredicate>();
+                for (StarColumnPredicate starColumnPredicate : listPredicate.children) {
+                    if (this.evaluate(((ValueColumnPredicate)starColumnPredicate).getValue())) {
+                        starColPredList.add(starColumnPredicate);
+                    }
+                    
+                }
+                return new ListColumnPredicate(this.getColumnList().get(0),starColPredList);
+            }
+        }
+        return super.and(predicate);
+    }
+    
+    
     public void toSql(Dialect dialect, StringBuilder buf) {
         List<StarColumnPredicate> predicates = getPredicates();
         if (predicates.size() == 1) {

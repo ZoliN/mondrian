@@ -179,9 +179,16 @@ public class RolapEvaluator implements Evaluator {
         HashMap<StarPredicate,CompoundPredicateInfo> predicateInfos = subQueryPredicateInfoMap.get(measure.getMeasureGroup());
         if ( predicateInfos == null ) {
             predicateInfos = new HashMap<StarPredicate,CompoundPredicateInfo>();
-            //TODO: should "AND" subqueries applied to the same rolapstarcolumn!!
+            HashMap<BitKey,CompoundPredicateInfo> predicateInfosBK = new HashMap<BitKey,CompoundPredicateInfo>();
             for (TupleList tupleList : subQueryTuples) {
                 CompoundPredicateInfo cpi = new CompoundPredicateInfo(tupleList, measure , this);
+                CompoundPredicateInfo cpi2 = predicateInfosBK.get(cpi.getBitKey());
+                if (cpi2 != null) {
+                    cpi.andInPlace(cpi2);
+                }
+                predicateInfosBK.put(cpi.getBitKey(),cpi);
+            }
+            for (CompoundPredicateInfo cpi : predicateInfosBK.values()) {
                 predicateInfos.put(cpi.getPredicate(),cpi);
             }
             subQueryPredicateInfoMap.put(measure.getMeasureGroup(),predicateInfos);

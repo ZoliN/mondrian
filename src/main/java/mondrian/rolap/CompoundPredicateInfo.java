@@ -47,7 +47,7 @@ import java.util.Map;
 public class CompoundPredicateInfo {
 
     private final Pair<BitKey, StarPredicate> predicate;
-    private final String predicateString;
+    private String predicateString;
     private final RolapMeasure measure;
     private boolean satisfiable = true;
 
@@ -86,6 +86,14 @@ public class CompoundPredicateInfo {
         return ((RolapStoredMeasure)measure).getMeasureGroup();    
     }
     
+    public void andInPlace(CompoundPredicateInfo cpi) {
+        if (!this.predicate.getKey().equals(cpi.predicate.getKey())) {
+            throw new UnsupportedOperationException();
+        }
+        this.predicate.right = this.predicate.right.and(cpi.predicate.right);
+        this.predicateString = getPredicateString(
+                getStar(measure), getPredicate());
+    }
     
     /**
      * Returns a string representation of the predicate
