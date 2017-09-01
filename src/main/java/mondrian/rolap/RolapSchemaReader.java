@@ -541,6 +541,18 @@ public class RolapSchemaReader
             getMemberReader(level.getHierarchy());
         List<RolapMember> membersInLevel =
             memberReader.getMembersInLevel(level, constraint);
+        if (context != null) {
+            Set<Member> subqueryMembers = context.getSubqueryMemberSet(_level);
+            if (subqueryMembers != null) {
+                List<Member> filteredMembers = new ArrayList<Member>();
+                for (Member member : membersInLevel) {
+                    if (subqueryMembers.contains(member)) {
+                        filteredMembers.add(member);
+                    }
+                }
+                return filteredMembers;
+            }
+        }
         return Util.cast(membersInLevel);
     }
 

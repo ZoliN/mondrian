@@ -14,9 +14,11 @@ import mondrian.calc.impl.AbstractListCalc;
 import mondrian.calc.impl.UnaryTupleList;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
+import mondrian.rolap.RolapEvaluator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Definition of the <code>DrilldownLevel</code> MDX function.
@@ -95,10 +97,13 @@ class DrilldownLevelFunDef extends FunDefBase {
                         result.add(tuple);
                         final List<Member> children =
                             schemaReader.getMemberChildren(tuple.get(index));
+                        Set<Member> subqueryMembers = ((RolapEvaluator)evaluator).getSubqueryMemberSet(children.get(0).getLevel());
                         for (Member child : children) {
-                            tuple.toArray(tupleClone);
-                            tupleClone[index] = child;
-                            result.addTuple(tupleClone);
+                            if (subqueryMembers == null || subqueryMembers.contains(child)) {
+                                tuple.toArray(tupleClone);
+                                tupleClone[index] = child;
+                                result.addTuple(tupleClone);
+                            }
                         }
                     }
                     return result;
@@ -144,8 +149,12 @@ class DrilldownLevelFunDef extends FunDefBase {
             {
                 final List<Member> childMembers =
                     evaluator.getSchemaReader().getMemberChildren(member);
+                
+                Set<Member> subqueryMembers = ((RolapEvaluator)evaluator).getSubqueryMemberSet(childMembers.get(0).getLevel());
                 for (Member childMember : childMembers) {
-                    drilledSet.add(childMember);
+                    if (subqueryMembers == null || subqueryMembers.contains(childMember)) {
+                        drilledSet.add(childMember);
+                    }
                 }
             }
         }

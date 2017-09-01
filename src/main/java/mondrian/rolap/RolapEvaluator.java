@@ -302,6 +302,10 @@ public class RolapEvaluator implements Evaluator {
         }
     }
     
+    public Set<Member> getSubqueryMemberSet(Level level) {
+        return subQueryMapLevelToMemberSet.get(level);
+    }
+    
     /**
      * States of the finite state machine for determining the max solve order
      * for the "scoped" behavior.
