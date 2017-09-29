@@ -37,7 +37,7 @@ class GenerateFunDef extends FunDefBase {
             "Generate",
             "Generate(<Set>, <String>[, <String>])",
             "Applies a set to a string expression and joins resulting sets by string concatenation.",
-            new String[] {"fSxS", "fSxSS"},
+            new String[] {"fSxS", "fSxSS", "fSxn", "fSxnS",},
             GenerateFunDef.class);
 
     private static final String[] ReservedWords = new String[] {"ALL"};
@@ -51,6 +51,8 @@ class GenerateFunDef extends FunDefBase {
         if (type instanceof StringType) {
             // Generate(<Set>, <String>[, <String>])
             return type;
+        } else if (type instanceof NumericType) {
+            return new StringType();
         } else {
             final Type memberType = TypeUtil.toMemberOrTupleType(type);
             return new SetType(memberType);
@@ -59,9 +61,18 @@ class GenerateFunDef extends FunDefBase {
 
     public Calc compileCall(ResolvedFunCall call, ExpCompiler compiler) {
         final IterCalc iterCalc = compiler.compileIter(call.getArg(0));
-        if (call.getArg(1).getType() instanceof StringType) {
-            final StringCalc stringCalc =
-                compiler.compileString(call.getArg(1));
+        if (call.getArg(1).getType() instanceof StringType || call.getArg(1).getType() instanceof NumericType) {
+            final StringCalc stringCalc;
+            if (call.getArg(1).getType() instanceof StringType) {
+                stringCalc = compiler.compileString(call.getArg(1));
+            } else {
+                final IntegerCalc intCalc =  compiler.compileInteger(call.getArg(1));
+                stringCalc = new AbstractStringCalc(call.getArg(1), new Calc[] {intCalc}) {
+                    public String evaluateString(Evaluator evaluator) {
+                        return String.valueOf(intCalc.evaluateInteger(evaluator));
+                    }
+                };
+            }
             final StringCalc delimCalc;
             if (call.getArgCount() == 3) {
                 delimCalc = compiler.compileString(call.getArg(2));
