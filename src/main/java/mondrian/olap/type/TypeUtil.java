@@ -507,7 +507,10 @@ public class TypeUtil {
             }
             return hierarchyList;
         } else {
-            return Collections.singletonList(type.getHierarchy());
+            Hierarchy hierarchy = type.getHierarchy();
+            return hierarchy == null
+                ? Collections.<Hierarchy>emptyList()
+                : Collections.singletonList(hierarchy);
         }
     }
 
